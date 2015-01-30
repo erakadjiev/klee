@@ -324,11 +324,19 @@ Executor::Executor(const InterpreterOptions &opts,
     };
     llvm::errs() << "Starting MetaSMTSolver(" << backend << ") ...\n";
   }
-  else {
+  // FIXME check for solver address for correctness
+  else if(useDistSolver && !solverServiceAddress.empty()){
+    coreSolver = new SMTLIBSolver(solverServiceAddress);
+  } else {
     coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
   }
 #else
-  coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+  // FIXME check for path correctness
+  if(useDistSolver && !solverExecutablePath.empty()){
+    coreSolver = new SMTLIBSolver(solverExecutablePath);
+  } else {
+    coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+  }
 #endif /* SUPPORT_METASMT */
   
    

@@ -234,6 +234,17 @@ namespace klee {
 
 #endif /* SUPPORT_METASMT */
 
+  class SMTLIBSolver: public Solver {
+    public:
+      SMTLIBSolver(std::string& pathToSolver/*,
+          const std::string& pathToOutputTempFile,
+          const std::string& pathToInputTempFile*/);
+      virtual ~SMTLIBSolver();
+
+      virtual char *getConstraintLog(const Query&);
+      virtual void setCoreSolverTimeout(double timeout);
+  };
+
   /* *** */
 
   /// createValidatingSolver - Create a solver which will validate all query

@@ -87,6 +87,14 @@ UseMetaSMT("use-metasmt",
 
 #endif /* SUPPORT_METASMT */
 
+llvm::cl::opt<bool> useDistSolver("use-dist-solver",
+    llvm::cl::desc("Use distributed SMT solver"),
+    llvm::cl::init(false));
+
+llvm::cl::opt<std::string> solverServiceAddress("dist-solver-address",
+    llvm::cl::desc("Set the IP address of the remote SMTLIBv2 solver service. Implies use-dist-solver."),
+    llvm::cl::init(""));
+
 }
 
 
