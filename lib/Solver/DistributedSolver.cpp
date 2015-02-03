@@ -10,6 +10,7 @@
 #include "klee/Solver.h"
 #include "klee/SolverImpl.h"
 #include <string>
+#include "klee/TimerStatIncrementer.h"
 #include "klee/util/ExprSMTLIBPrinter.h"
 
 //for findSymbolicObjects()
@@ -21,20 +22,15 @@
 //remove me
 #include <iostream>
 
-#include <fstream>
-
-#include <signal.h>
-#include <time.h>
-#include <unistd.h>
 #include <errno.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
 
 #include "SMTLIBOutputLexer.h"
 
 #include "SolverStats.h"
 
 #include "llvm/Support/CommandLine.h"
+
+#include <czmq.h>
 namespace SMTLIBSolverOpts {
   llvm::cl::opt<bool> makeHumanReadableSMTLIB("smtlibv2-solver-human-readable",
       llvm::cl::desc(
@@ -46,7 +42,6 @@ using namespace std;
 namespace klee {
   class DistributedSolverImpl: public SolverImpl {
     private:
-      string solverAddress;
       SMTLIBOutputLexer lexer;
 
       double timeout;
@@ -55,11 +50,14 @@ namespace klee {
 
       ExprSMTLIBPrinter* printer;
 
+      zsock_t* service;
+
       void giveUp();
 
       std::string buildSMTLIBv2String(const Query& q,
           const std::vector<const Array*>& arrays);
       std::string buildSMTLIBv2String(const Query& q);
+      std::string sendQuery(std::string query);
       virtual SolverImpl::SolverRunStatus solveRemotely(const Query& q,
           const std::vector<const Array*>& objects,
           std::vector<std::vector<unsigned char> >& values,
@@ -84,34 +82,54 @@ namespace klee {
       bool computeValue(const Query&, ref<Expr>& result);
       bool computeInitialValues(const Query&,
           const std::vector<const Array*>& objects,
-          std::vector<std::vector<unsigned char>>& values, bool& hasSolution);
+          std::vector<std::vector<unsigned char> >& values, bool& hasSolution);
 
-      SolverRunStatus getOperationStatusCode();
+      SolverImpl::SolverRunStatus getOperationStatusCode();
   };
   
   DistributedSolver::DistributedSolver(std::string solverAddress) :
           Solver(new DistributedSolverImpl(solverAddress)) {
   }
   
+  DistributedSolver::~DistributedSolver(){
+
+  }
+
   void DistributedSolver::setCoreSolverTimeout(double timeout) {
     impl->setCoreSolverTimeout(timeout);
   }
   
-  char *DistributedSolver::getConstraintLog(const Query& query) {
+  char* DistributedSolver::getConstraintLog(const Query& query) {
     return (impl->getConstraintLog(query));
   }
   
   // ------------------------------------- SMTLIBSolverImpl methods ----------------------------------------
   
   DistributedSolverImpl::DistributedSolverImpl(const string _solverAddress) :
-          solverAddress(_solverAddress), printer(new ExprSMTLIBPrinter()), timeout(0.0), _runStatusCode(SOLVER_RUN_STATUS_FAILURE) {
+          timeout(0.0), _runStatusCode(SOLVER_RUN_STATUS_FAILURE) {
     // FIXME there should be an initial run status code (e.g. _UNKNOWN or _RUNNING)
+    printer = new ExprSMTLIBPrinter();
     printer->setLogic(ExprSMTLIBPrinter::QF_AUFBV);
     printer->setHumanReadable(SMTLIBSolverOpts::makeHumanReadableSMTLIB);
+    zsock_t* discovery = zsock_new_req(_solverAddress.c_str());
+    assert(discovery);
+
+
+    std::cout << "client1 starting...\n";
+    int rc = zstr_send(discovery, "DISC");
+    assert(rc == 0);
+    std::cout << "Sent discovery request\n";
+    char* rep = zstr_recv(discovery);
+    std::cout << "Service endpoint(s) discovered:\n" << rep << "\n";
+    service = zsock_new_dealer(rep);
+    assert(service);
+    zstr_free(&rep);
+    zsock_destroy(&discovery);
   }
   
   DistributedSolverImpl::~DistributedSolverImpl() {
     delete printer;
+    zsock_destroy(&service);
   }
   
   void DistributedSolverImpl::giveUp() {
@@ -170,7 +188,7 @@ namespace klee {
   
   bool DistributedSolverImpl::computeInitialValues(const Query& query,
       const std::vector<const Array*>& objects,
-      std::vector<std::vector<unsigned char>>& values, bool& hasSolution) {
+      std::vector<std::vector<unsigned char> >& values, bool& hasSolution) {
     
     _runStatusCode = SOLVER_RUN_STATUS_FAILURE;
     
@@ -203,9 +221,27 @@ namespace klee {
     std::string smtLibQuery = buildSMTLIBv2String(query, objects);
 
     std::string queryResult;
-    sendQuery(smtLibQuery, queryResult);
+    queryResult = sendQuery(smtLibQuery);
 
     return parseSolverOutput(queryResult, objects, values, hasSolution);
+  }
+
+  std::string DistributedSolverImpl::sendQuery(std::string query){
+    std::cout << "Sending SMT query to service\n";
+    int rc = zstr_send(service, query.c_str());
+    assert(rc == 0);
+    char* ans = zstr_recv(service);
+    if (ans == NULL){
+      cerr << "Received \"null\" response from server\n"
+          << "Errno: " << errno << " " << zsys_interrupted << "\n" << endl;
+      giveUp();
+      return "";
+
+    } else {
+      std::string ret = ans;
+      zstr_free(&ans);
+      return ret;
+    }
   }
 
   SolverImpl::SolverRunStatus DistributedSolverImpl::parseSolverOutput(const std::string& solverOutput,
