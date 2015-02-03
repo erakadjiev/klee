@@ -326,14 +326,14 @@ Executor::Executor(const InterpreterOptions &opts,
   }
   // FIXME check for solver address for correctness
   else if(useDistSolver && !solverServiceAddress.empty()){
-    coreSolver = new SMTLIBSolver(solverServiceAddress);
+    coreSolver = new DistributedSolver(solverServiceAddress);
   } else {
     coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
   }
 #else
   // FIXME check for path correctness
-  if(useDistSolver && !solverExecutablePath.empty()){
-    coreSolver = new SMTLIBSolver(solverExecutablePath);
+  if(useDistSolver && !solverServiceAddress.empty()){
+    coreSolver = new DistributedSolver(solverServiceAddress);
   } else {
     coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
   }

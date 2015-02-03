@@ -58,6 +58,10 @@ extern llvm::cl::opt<klee::MetaSMTBackendType> UseMetaSMT;
 
 #endif /* SUPPORT_METASMT */
 
+extern llvm::cl::opt<bool> useDistSolver;
+
+extern llvm::cl::opt<std::string> solverServiceAddress;
+
 //A bit of ugliness so we can use cl::list<> like cl::bits<>, see queryLoggingOptions
 template <typename T>
 static bool optionIsSet(llvm::cl::list<T> list, T option)

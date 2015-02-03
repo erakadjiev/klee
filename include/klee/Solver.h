@@ -234,14 +234,12 @@ namespace klee {
 
 #endif /* SUPPORT_METASMT */
 
-  class SMTLIBSolver: public Solver {
+  class DistributedSolver: public Solver {
     public:
-      SMTLIBSolver(std::string& pathToSolver/*,
-          const std::string& pathToOutputTempFile,
-          const std::string& pathToInputTempFile*/);
-      virtual ~SMTLIBSolver();
+      DistributedSolver(std::string pathToSolver);
+      virtual ~DistributedSolver();
 
-      virtual char *getConstraintLog(const Query&);
+      virtual char* getConstraintLog(const Query&);
       virtual void setCoreSolverTimeout(double timeout);
   };
 

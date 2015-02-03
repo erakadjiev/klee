@@ -84,11 +84,11 @@ namespace klee {
       SolverRunStatus getOperationStatusCode();
   };
 
-  SMTLIBSolver::SMTLIBSolver(std::string& solverAddress) :
+  DistributedSolver::DistributedSolver(std::string& solverAddress) :
       Solver(new SMTLIBSolverImpl(solverAddress)) {
   }
 
-  void SMTLIBSolver::setCoreSolverTimeout(double timeout) {
+  void DistributedSolver::setCoreSolverTimeout(double timeout) {
     static_cast<SMTLIBSolverImpl*>(impl)->setCoreSolverTimeout(timeout);
   }
 
