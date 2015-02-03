@@ -59,3 +59,9 @@ ifeq ($(ENABLE_METASMT),1)
   CXX.Flags += $(metaSMT_INCLUDES)
 endif
 
+# For czmq
+ifeq ($(ENABLE_CZMQ),1)
+  LD.Flags += -L$(CZMQ_ROOT)/lib
+  CXX.Flags += -I$(CZMQ_ROOT)/include
+endif
+

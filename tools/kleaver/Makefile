@@ -31,3 +31,9 @@ ifeq ($(ENABLE_METASMT),1)
   CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags)) 
   LIBS += -lgomp -lboost_iostreams -lboost_thread -lboost_system -lmetaSMT -lz3 -lrt -lboolector -lminisat_core
 endif
+
+ifeq ($(ENABLE_CZMQ),1)
+  LD.Flags += -L$(CZMQ_ROOT)/lib
+  CXX.Flags += -I$(CZMQ_ROOT)/include 
+  LIBS += -lczmq
+endif

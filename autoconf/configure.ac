@@ -617,6 +617,39 @@ else
   AC_SUBST(REQUIRES_RTTI,[[1]])
 fi
 
+dnl **************************************************************************
+dnl User option to enable distributed constraint solvers and to specify the 
+dnl the location of the czmq root directory
+dnl **************************************************************************
+
+AC_ARG_WITH(czmq,
+  AS_HELP_STRING([--with-czmq],
+    [Location of czmq installation directory]),,)
+
+if test X$with_czmq = X ; then
+  AC_SUBST(ENABLE_CZMQ,[[0]])
+else
+  czmq_root=`cd $with_czmq 2> /dev/null; pwd`
+
+  dnl AC_LANG(C++)
+  old_CPPFLAGS="$CPPFLAGS"
+  old_LDFLAGS="$LDFLAGS"  
+  CPPFLAGS="$CPPFLAGS -I$czmq_root/include"
+  LDFLAGS="$LDFLAGS -L$czmq_root/lib -lczmq"
+  AC_CHECK_HEADER([$czmq_root/include/czmq.h],,
+    [
+        AC_MSG_ERROR([Unable to use $czmq_root/include/czmq.h header])
+    ])
+  AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM([#include $czmq_root/include/czmq.h], [zsys_socket_limit()])],
+      [],[AC_MSG_CHECKING([for zsys_socket_limit() in -lczmq])],[AC_MSG_ERROR([Unable to link with libczmq])])  
+  CPPFLAGS="$old_CPPFLAGS"
+  LDFLAGS="$old_LDFLAGS"
+
+  AC_DEFINE(SUPPORT_CZMQ, 1, [Supporting czmq API])
+  AC_SUBST(ENABLE_CZMQ,[[1]])
+  AC_SUBST(CZMQ_ROOT,$czmq_root)
+fi
 
 dnl **************************************************************************
 dnl * Create the output files

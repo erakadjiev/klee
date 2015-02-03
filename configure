@@ -624,6 +624,8 @@ ac_includes_default="\
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+CZMQ_ROOT
+ENABLE_CZMQ
 METASMT_ROOT
 ENABLE_METASMT
 STP_LDFLAGS
@@ -729,6 +731,7 @@ enable_posix_runtime
 with_runtime
 with_stp
 with_metasmt
+with_czmq
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1380,6 +1383,7 @@ Optional Packages:
                           (default [Release+Asserts])
   --with-stp              Location of STP installation directory
   --with-metasmt          Location of metaSMT installation directory
+  --with-czmq             Location of czmq installation directory
 
 Some influential environment variables:
   CXX         C++ compiler command
@@ -5206,6 +5210,65 @@ $as_echo "#define SUPPORT_METASMT 1" >>confdefs.h
 
 fi
 
+
+
+# Check whether --with-czmq was given.
+if test "${with_czmq+set}" = set; then :
+  withval=$with_czmq;
+fi
+
+
+if test X$with_czmq = X ; then
+  ENABLE_CZMQ=0
+
+else
+  czmq_root=`cd $with_czmq 2> /dev/null; pwd`
+
+    old_CPPFLAGS="$CPPFLAGS"
+  old_LDFLAGS="$LDFLAGS"
+  CPPFLAGS="$CPPFLAGS -I$czmq_root/include"
+  LDFLAGS="$LDFLAGS -L$czmq_root/lib -lczmq"
+  as_ac_Header=`$as_echo "ac_cv_header_$czmq_root/include/czmq.h" | $as_tr_sh`
+ac_fn_cxx_check_header_mongrel "$LINENO" "$czmq_root/include/czmq.h" "$as_ac_Header" "$ac_includes_default"
+if eval test \"x\$"$as_ac_Header"\" = x"yes"; then :
+
+else
+
+        as_fn_error $? "Unable to use $czmq_root/include/czmq.h header" "$LINENO" 5
+
+fi
+
+
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include $czmq_root/include/czmq.h
+int
+main ()
+{
+zsys_socket_limit()
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_link "$LINENO"; then :
+
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for zsys_socket_limit() in -lczmq" >&5
+$as_echo_n "checking for zsys_socket_limit() in -lczmq... " >&6; }
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+  CPPFLAGS="$old_CPPFLAGS"
+  LDFLAGS="$old_LDFLAGS"
+
+
+$as_echo "#define SUPPORT_CZMQ 1" >>confdefs.h
+
+  ENABLE_CZMQ=1
+
+  CZMQ_ROOT=$czmq_root
+
+fi
 
 
 ac_config_commands="$ac_config_commands Makefile"
