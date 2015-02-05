@@ -34,7 +34,6 @@
 #include <sys/time.h>
 #include <math.h>
 
-
 using namespace llvm;
 using namespace klee;
 
@@ -61,36 +60,38 @@ public:
 ///
 
 static const double kSecondsPerTick = .1;
-static volatile unsigned timerTicks = 0;
+//static volatile unsigned timerTicks = 0;
+static volatile int64_t start;
 
 // XXX hack
 extern "C" unsigned dumpStates, dumpPTree;
 unsigned dumpStates = 0, dumpPTree = 0;
 
-static void onAlarm(int) {
-  ++timerTicks;
-}
+//static void onAlarm(int) {
+//  ++timerTicks;
+//}
 
 // oooogalay
-static void setupHandler() {
-  struct itimerval t;
-  struct timeval tv;
-  
-  tv.tv_sec = (long) kSecondsPerTick;
-  tv.tv_usec = (long) (fmod(kSecondsPerTick, 1.)*1000000);
-  
-  t.it_interval = t.it_value = tv;
-  
-  ::setitimer(ITIMER_REAL, &t, 0);
-  ::signal(SIGALRM, onAlarm);
-}
+//static void setupHandler() {
+//  struct itimerval t;
+//  struct timeval tv;
+//
+//  tv.tv_sec = (long) kSecondsPerTick;
+//  tv.tv_usec = (long) (fmod(kSecondsPerTick, 1.)*1000000);
+//
+//  t.it_interval = t.it_value = tv;
+//
+//  ::setitimer(ITIMER_REAL, &t, 0);
+//  ::signal(SIGALRM, onAlarm);
+//}
 
 void Executor::initTimers() {
   static bool first = true;
 
   if (first) {
     first = false;
-    setupHandler();
+//    setupHandler();
+    start = util::getWallTime();
   }
 
   if (MaxTime) {
@@ -110,15 +111,15 @@ void Executor::addTimer(Timer *timer, double rate) {
 
 void Executor::processTimers(ExecutionState *current,
                              double maxInstTime) {
-  static unsigned callsWithoutCheck = 0;
-  unsigned ticks = timerTicks;
+//  static unsigned callsWithoutCheck = 0;
+//  unsigned ticks = timerTicks;
+//
+//  if (!ticks && ++callsWithoutCheck > 1000) {
+//    setupHandler();
+//    ticks = 1;
+//  }
 
-  if (!ticks && ++callsWithoutCheck > 1000) {
-    setupHandler();
-    ticks = 1;
-  }
-
-  if (ticks || dumpPTree || dumpStates) {
+//  if (ticks || dumpPTree || dumpStates) {
     if (dumpPTree) {
       char name[32];
       sprintf(name, "ptree%08d.dot", (int) stats::instructions);
@@ -181,9 +182,10 @@ void Executor::processTimers(ExecutionState *current,
     }
 
     if (maxInstTime>0 && current && !removedStates.count(current)) {
-      if (timerTicks*kSecondsPerTick > maxInstTime) {
+      double elapsed_seconds = util::getWallTime() - start;
+      if (elapsed_seconds > maxInstTime) {
         klee_warning("max-instruction-time exceeded: %.2fs",
-                     timerTicks*kSecondsPerTick);
+            elapsed_seconds);
         terminateStateEarly(*current, "max-instruction-time exceeded");
       }
     }
@@ -202,8 +204,8 @@ void Executor::processTimers(ExecutionState *current,
       }
     }
 
-    timerTicks = 0;
-    callsWithoutCheck = 0;
-  }
+    start = util::getWallTime();
+//    callsWithoutCheck = 0;
+//  }
 }
 
