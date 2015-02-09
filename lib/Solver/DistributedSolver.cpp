@@ -51,6 +51,7 @@ namespace klee {
       ExprSMTLIBPrinter* printer;
 
       zsock_t* service;
+      zhashx_t* solvers;
 
       void giveUp();
 
@@ -113,17 +114,24 @@ namespace klee {
     printer->setHumanReadable(SMTLIBSolverOpts::makeHumanReadableSMTLIB);
     zsock_t* discovery = zsock_new_req(_solverAddress.c_str());
     assert(discovery);
+    service = zsock_new(ZMQ_DEALER);
+    assert(service);
 
 
     std::cout << "client1 starting...\n";
     int rc = zstr_send(discovery, "DISC");
     assert(rc == 0);
     std::cout << "Sent discovery request\n";
-    char* rep = zstr_recv(discovery);
-    std::cout << "Service endpoint(s) discovered:\n" << rep << "\n";
-    service = zsock_new_dealer(rep);
-    assert(service);
-    zstr_free(&rep);
+    zframe_t* rep = zframe_recv(discovery);
+    solvers = zhashx_unpack(rep);
+    zframe_destroy(&rep);
+    std::cout << "Service endpoint(s) discovered: {\n";
+    for(void* solver = zhashx_first(solvers); solver != NULL; solver = zhashx_next(solvers)){
+      std::string solver_addr = (const char*)zhashx_cursor(solvers);
+      zsock_connect(service, "%s%s", "tcp://", solver_addr.c_str());
+      std::cout << '\t' << solver_addr << "\n";
+    }
+    std::cout << "}\n";
     zsock_destroy(&discovery);
   }
   
