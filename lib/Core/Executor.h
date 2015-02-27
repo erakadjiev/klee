@@ -68,6 +68,7 @@ namespace klee {
   class SpecialFunctionHandler;
   struct StackFrame;
   class StatsTracker;
+  class Solver;
   class TimingSolver;
   class TreeStreamWriter;
   template<class T> class ref;
@@ -120,6 +121,7 @@ private:
   Searcher *searcher;
 
   ExternalDispatcher *externalDispatcher;
+  Solver *coreSolver;
   TimingSolver *solver;
   MemoryManager *memory;
   std::set<ExecutionState*> states;
@@ -191,7 +193,12 @@ private:
   void printFileLine(ExecutionState &state, KInstruction *ki);
 
   void run(ExecutionState &initialState);
+  void runOriginal(ExecutionState &initialState);
+  void runOrigTest(ExecutionState &initialState);
+  void runInFiber(ExecutionState &initialState);
 
+  void checkMaxMemory(ExecutionState &current, CurrentInstructionContext& instrCtx);
+  void dumpStatesIfRequired(CurrentInstructionContext& instrCtx);
 
   // Given a concrete object in our [klee's] address space, add it to 
   // objects checked code can reference.
