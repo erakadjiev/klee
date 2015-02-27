@@ -243,6 +243,15 @@ namespace klee {
       virtual void setCoreSolverTimeout(double timeout);
   };
 
+  class SMTLIBSolver : public Solver {
+    public:
+      SMTLIBSolver(std::string pathToSolver);
+      virtual ~SMTLIBSolver();
+
+      virtual char* getConstraintLog(const Query&);
+      virtual void setCoreSolverTimeout(double timeout);
+  };
+
   /* *** */
 
   /// createValidatingSolver - Create a solver which will validate all query
