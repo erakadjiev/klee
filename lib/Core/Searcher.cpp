@@ -429,6 +429,38 @@ MergingSearcher::~MergingSearcher() {
 
 ///
 
+StateRemovingSearcher::StateRemovingSearcher(Searcher* _baseSearcher)
+  : baseSearcher(_baseSearcher) { }
+
+StateRemovingSearcher::~StateRemovingSearcher() {
+  delete baseSearcher;
+}
+
+ExecutionState &StateRemovingSearcher::selectState(CurrentInstructionContext& instrCtx) {
+  ExecutionState& s = baseSearcher->selectState(instrCtx);
+  baseSearcher->removeState(&s);
+  s.beingExecuted = true;
+  return s;
+}
+
+void StateRemovingSearcher::update(ExecutionState *current,
+                              const std::set<ExecutionState*> &addedStates,
+                              const std::set<ExecutionState*> &removedStates) {
+  current->beingExecuted = false;
+  baseSearcher->addState(current);
+  baseSearcher->update(current, addedStates, removedStates);
+}
+
+void StateRemovingSearcher::addState(ExecutionState *es){
+  baseSearcher->addState(es);
+}
+
+void StateRemovingSearcher::removeState(ExecutionState *es){
+  baseSearcher->removeState(es);
+}
+
+///
+
 Instruction *MergingSearcher::getMergePoint(ExecutionState &es) {
   if (mergeFunction) {
     Instruction *i = es.pc->inst;

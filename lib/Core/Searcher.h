@@ -206,6 +206,23 @@ namespace klee {
     virtual void addState(ExecutionState *es);
     virtual void removeState(ExecutionState *es);
   };
+
+  class StateRemovingSearcher : public Searcher {
+    Searcher* baseSearcher;
+
+    public:
+      StateRemovingSearcher(Searcher* baseSearcher);
+      ~StateRemovingSearcher();
+      ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+      void update(ExecutionState *current,
+          const std::set<ExecutionState*> &addedStates,
+          const std::set<ExecutionState*> &removedStates);
+      bool empty() { return baseSearcher->empty(); }
+      void printName(llvm::raw_ostream &os) {
+        os << "StateRemovingSearcher\n";
+      }
+      virtual void addState(ExecutionState *es);
+      virtual void removeState(ExecutionState *es);
   };
 
   class MergingSearcher : public Searcher {

@@ -15,6 +15,7 @@
 #include "Executor.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "klee/CommandLine.h"
 
 using namespace llvm;
 using namespace klee;
@@ -94,6 +95,7 @@ Searcher *getNewSearcher(Searcher::CoreSearchType type, Executor &executor) {
 
 Searcher *klee::constructUserSearcher(Executor &executor) {
 
+
   // default values
   if (CoreSearch.size() == 0) {
     CoreSearch.push_back(Searcher::RandomPath);
@@ -112,21 +114,33 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     searcher = new InterleavedSearcher(s);
   }
 
-  if (UseBatchingSearch) {
-    searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
-  }
-
-  // merge support is experimental
-  if (UseMerge) {
-    assert(!UseBumpMerge);
-    assert(std::find(CoreSearch.begin(), CoreSearch.end(), Searcher::RandomPath) == CoreSearch.end()); // XXX: needs further debugging: test/Features/Searchers.c fails with this searcher
-    searcher = new MergingSearcher(executor, searcher);
-  } else if (UseBumpMerge) {
-    searcher = new BumpMergingSearcher(executor, searcher);
-  }
+  if(useDistSolver){
+//    fprintf(stdout, "Creating StateRemovingSearcher\n");
+    if(std::find(CoreSearch.begin(), CoreSearch.end(), Searcher::RandomPath) != CoreSearch.end()){
+//      fprintf(stdout, "StateRemovingSearcher is not compatible with RandomPathSearcher, using DFS as base\n");
+      delete searcher;
+      searcher = getNewSearcher(Searcher::DFS, executor);
+    }
+    searcher = new StateRemovingSearcher(searcher);
+  } else {
+    /***** Following solvers don't work together currently with the DistributedSolver *****/
+    if (UseBatchingSearch) {
+      searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
+    }
   
-  if (UseIterativeDeepeningTimeSearch) {
-    searcher = new IterativeDeepeningTimeSearcher(searcher);
+    // merge support is experimental
+    if (UseMerge) {
+      assert(!UseBumpMerge);
+      assert(std::find(CoreSearch.begin(), CoreSearch.end(), Searcher::RandomPath) == CoreSearch.end()); // XXX: needs further debugging: test/Features/Searchers.c fails with this searcher
+      searcher = new MergingSearcher(executor, searcher);
+    } else if (UseBumpMerge) {
+      searcher = new BumpMergingSearcher(executor, searcher);
+    }
+
+    if (UseIterativeDeepeningTimeSearch) {
+      searcher = new IterativeDeepeningTimeSearcher(searcher);
+    }
+
   }
 
   llvm::raw_ostream &os = executor.getHandler().getInfoStream();
