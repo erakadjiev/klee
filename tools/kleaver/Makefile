@@ -37,3 +37,9 @@ ifeq ($(ENABLE_CZMQ),1)
   CXX.Flags += -I$(CZMQ_ROOT)/include 
   LIBS += -lczmq
 endif
+
+ifeq ($(ENABLE_BOOST),1)
+  LD.Flags += -L$(BOOST_ROOT)/lib
+  CXX.Flags += -I$(BOOST_ROOT)/include 
+  LIBS += -Wl,-Bstatic -lboost_fiber -Wl,-Bdynamic -lboost_context -lboost_thread -lboost_system
+endif

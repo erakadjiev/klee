@@ -24,3 +24,7 @@ ifeq ($(ENABLE_METASMT),1)
   CXX.Flags += $(metaSMT_CXXFLAGS)
   CXX.Flags += $(metaSMT_INCLUDES)
 endif
+
+ifeq ($(ENABLE_BOOST),1)
+  CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags))
+endif

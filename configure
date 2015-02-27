@@ -624,6 +624,8 @@ ac_includes_default="\
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+BOOST_ROOT
+ENABLE_BOOST
 CZMQ_ROOT
 ENABLE_CZMQ
 METASMT_ROOT
@@ -652,6 +654,7 @@ clang
 llvm_gxx
 llvm_gcc
 LLVM_BUILD_MODE
+KLEE_USE_CXX14
 KLEE_USE_CXX11
 REQUIRES_RTTI
 LLVM_IS_RELEASE
@@ -723,6 +726,7 @@ with_llvmsrc
 with_llvmobj
 with_llvm
 enable_cxx11
+enable_cxx14
 with_llvm_build_mode
 with_llvmcc
 with_llvmcxx
@@ -732,6 +736,7 @@ with_runtime
 with_stp
 with_metasmt
 with_czmq
+with_boost
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1361,6 +1366,7 @@ Optional Features:
   --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
   --enable-cxx11          Build using C++11
+  --enable-cxx14          Build using C++14
   --enable-posix-runtime  Enable the POSIX runtime
 
 Optional Packages:
@@ -1384,6 +1390,7 @@ Optional Packages:
   --with-stp              Location of STP installation directory
   --with-metasmt          Location of metaSMT installation directory
   --with-czmq             Location of czmq installation directory
+  --with-boost            Location of boost installation directory
 
 Some influential environment variables:
   CXX         C++ compiler command
@@ -3236,10 +3243,20 @@ else
 fi
 
 
+# Check whether --enable-cxx14 was given.
+if test "${enable_cxx14+set}" = set; then :
+  enableval=$enable_cxx14; klee_use_cxx14=1
+else
+  klee_use_cxx14=0
+fi
+
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking if LLVM needs C++11" >&5
 $as_echo_n "checking if LLVM needs C++11... " >&6; }
 if test '(' $llvm_version_major -eq 3 -a $llvm_version_minor -ge 5 ')' -o '(' $llvm_version_major -gt 3 ')' ; then
-  klee_use_cxx11=1
+  if test klee_use_cxx14 != 1; then
+    klee_use_cxx11=1
+  fi
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 $as_echo "yes" >&6; }
 else
@@ -3247,7 +3264,7 @@ else
 $as_echo "no" >&6; }
 fi
 
-if test X${klee_use_cxx11} = X1; then
+if test X${klee_use_cxx11} = X1 -o X${klee_use_cxx14} = X1; then
   klee_old_cxxflags="$CXXFLAGS"
   CXXFLAGS="$CXXFLAGS -std=c++11"
 
@@ -3273,6 +3290,8 @@ rm -f core conftest.err conftest.$ac_objext \
 fi
 
 KLEE_USE_CXX11=$klee_use_cxx11
+
+KLEE_USE_CXX14=$klee_use_cxx14
 
 
 
@@ -5212,16 +5231,22 @@ fi
 
 
 
+
 # Check whether --with-czmq was given.
 if test "${with_czmq+set}" = set; then :
   withval=$with_czmq;
+else
+  with_czmq="no"
 fi
 
 
-if test X$with_czmq = X ; then
+if test X$with_czmq = Xno ; then
   ENABLE_CZMQ=0
 
 else
+  if test X$with_czmq = X -o X$with_czmq = Xyes; then
+    with_czmq="/usr/local"
+  fi
   czmq_root=`cd $with_czmq 2> /dev/null; pwd`
 
     old_CPPFLAGS="$CPPFLAGS"
@@ -5245,7 +5270,7 @@ fi
 int
 main ()
 {
-zsys_socket_limit()
+zsock_new(ZMQ_REQ)
   ;
   return 0;
 }
@@ -5253,8 +5278,8 @@ _ACEOF
 if ac_fn_cxx_try_link "$LINENO"; then :
 
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for zsys_socket_limit() in -lczmq" >&5
-$as_echo_n "checking for zsys_socket_limit() in -lczmq... " >&6; }
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for zsock_new() in -lczmq" >&5
+$as_echo_n "checking for zsock_new() in -lczmq... " >&6; }
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
@@ -5267,6 +5292,83 @@ $as_echo "#define SUPPORT_CZMQ 1" >>confdefs.h
   ENABLE_CZMQ=1
 
   CZMQ_ROOT=$czmq_root
+
+fi
+
+
+
+# Check whether --with-boost was given.
+if test "${with_boost+set}" = set; then :
+  withval=$with_boost;
+else
+  with_boost="no"
+fi
+
+
+if test X$with_boost = Xno ; then
+  ENABLE_BOOST=0
+
+else
+  if test X$with_boost = X -o X$with_boost = Xyes ; then
+    with_boost="/usr/local"
+  fi
+  boost_root=`cd $with_boost 2> /dev/null; pwd`
+
+  ac_ext=cpp
+ac_cpp='$CXXCPP $CPPFLAGS'
+ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CXX -o conftest$ac_exeext $CXXFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
+
+  old_CPPFLAGS="$CPPFLAGS"
+  old_LDFLAGS="$LDFLAGS"
+  CPPFLAGS="$CPPFLAGS -std=c++14 -I$boost_root/include"
+  LDFLAGS="$LDFLAGS -L$boost_root/lib -lboost_fiber -lboost_context -lboost_thread -lboost_system"
+  as_ac_Header=`$as_echo "ac_cv_header_$boost_root/include/boost/fiber/all.hpp" | $as_tr_sh`
+ac_fn_cxx_check_header_mongrel "$LINENO" "$boost_root/include/boost/fiber/all.hpp" "$as_ac_Header" "$ac_includes_default"
+if eval test \"x\$"$as_ac_Header"\" = x"yes"; then :
+
+else
+
+        as_fn_error $? "Unable to use $boost_root/include/boost/fiber/all.hpp header" "$LINENO" 5
+
+fi
+
+
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include $boost_root/include/boost/fiber/all.hpp
+int
+main ()
+{
+boost::fibers::fiber f()
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_link "$LINENO"; then :
+
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for fiber() in -lboost_fiber" >&5
+$as_echo_n "checking for fiber() in -lboost_fiber... " >&6; }
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+  CPPFLAGS="$old_CPPFLAGS"
+  LDFLAGS="$old_LDFLAGS"
+  ac_ext=cpp
+ac_cpp='$CXXCPP $CPPFLAGS'
+ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CXX -o conftest$ac_exeext $CXXFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
+
+
+
+$as_echo "#define SUPPORT_BOOST 1" >>confdefs.h
+
+  ENABLE_BOOST=1
+
+  BOOST_ROOT=$boost_root
 
 fi
 

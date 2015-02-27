@@ -158,17 +158,22 @@ AC_SUBST(REQUIRES_RTTI,$requires_rtti)
 dnl Provide option to use C++11
 AC_ARG_ENABLE([cxx11],[  --enable-cxx11          Build using C++11], [klee_use_cxx11=1], [klee_use_cxx11=0])
 
+dnl Provide option to use C++14
+AC_ARG_ENABLE([cxx14],[  --enable-cxx14          Build using C++14], [klee_use_cxx14=1], [klee_use_cxx14=0])
+
 dnl LLVM >= 3.5 requires C++11
 AC_MSG_CHECKING([if LLVM needs C++11])
 if test '(' $llvm_version_major -eq 3 -a $llvm_version_minor -ge 5 ')' -o '(' $llvm_version_major -gt 3 ')' ; then
-  klee_use_cxx11=1
+  if test klee_use_cxx14 != 1; then
+    klee_use_cxx11=1
+  fi
   AC_MSG_RESULT([yes])
 else
   AC_MSG_RESULT([no])
 fi
 
 dnl Check if the compiler supports C++11 (this check is taken from LLVM's configure.ac).
-if test X${klee_use_cxx11} = X1; then
+if test X${klee_use_cxx11} = X1 -o X${klee_use_cxx14} = X1; then
   klee_old_cxxflags="$CXXFLAGS"
   CXXFLAGS="$CXXFLAGS -std=c++11"
   AC_LINK_IFELSE([AC_LANG_SOURCE([[
@@ -183,6 +188,7 @@ int main() { return (float)x; }
 fi
 
 AC_SUBST(KLEE_USE_CXX11,$klee_use_cxx11)
+AC_SUBST(KLEE_USE_CXX14,$klee_use_cxx14)
 
 
 AC_ARG_WITH(llvm-build-mode,
@@ -619,16 +625,21 @@ fi
 
 dnl **************************************************************************
 dnl User option to enable distributed constraint solvers and to specify the 
-dnl the location of the czmq root directory
+dnl the location of the czmq and boost root directory
 dnl **************************************************************************
+
+dnl ***** CZMQ *****
 
 AC_ARG_WITH(czmq,
   AS_HELP_STRING([--with-czmq],
-    [Location of czmq installation directory]),,)
+    [Location of czmq installation directory]),,with_czmq="no")
 
-if test X$with_czmq = X ; then
+if test X$with_czmq = Xno ; then
   AC_SUBST(ENABLE_CZMQ,[[0]])
 else
+  if test X$with_czmq = X -o X$with_czmq = Xyes; then
+    with_czmq="/usr/local"
+  fi
   czmq_root=`cd $with_czmq 2> /dev/null; pwd`
 
   dnl AC_LANG(C++)
@@ -641,14 +652,50 @@ else
         AC_MSG_ERROR([Unable to use $czmq_root/include/czmq.h header])
     ])
   AC_LINK_IFELSE(
-      [AC_LANG_PROGRAM([#include $czmq_root/include/czmq.h], [zsys_socket_limit()])],
-      [],[AC_MSG_CHECKING([for zsys_socket_limit() in -lczmq])],[AC_MSG_ERROR([Unable to link with libczmq])])  
+      [AC_LANG_PROGRAM([#include $czmq_root/include/czmq.h], [zsock_new(ZMQ_REQ)])],
+      [],[AC_MSG_CHECKING([for zsock_new() in -lczmq])],[AC_MSG_ERROR([Unable to link with libczmq])])  
   CPPFLAGS="$old_CPPFLAGS"
   LDFLAGS="$old_LDFLAGS"
 
   AC_DEFINE(SUPPORT_CZMQ, 1, [Supporting czmq API])
   AC_SUBST(ENABLE_CZMQ,[[1]])
   AC_SUBST(CZMQ_ROOT,$czmq_root)
+fi
+
+dnl ***** Boost *****
+
+AC_ARG_WITH(boost,
+  AS_HELP_STRING([--with-boost],
+    [Location of boost installation directory]),,with_boost="no")
+
+if test X$with_boost = Xno ; then
+  AC_SUBST(ENABLE_BOOST,[[0]])
+else
+  AC_SUBST(KLEE_USE_CXX14,[[1]])
+  if test X$with_boost = X -o X$with_boost = Xyes ; then
+    with_boost="/usr/local"
+  fi
+  boost_root=`cd $with_boost 2> /dev/null; pwd`
+
+  AC_LANG_PUSH([C++])
+  old_CPPFLAGS="$CPPFLAGS"
+  old_LDFLAGS="$LDFLAGS"  
+  CPPFLAGS="$CPPFLAGS -std=c++14 -I$boost_root/include"
+  LDFLAGS="$LDFLAGS -L$boost_root/lib -lboost_fiber -lboost_context -lboost_thread -lboost_system"
+  AC_CHECK_HEADER([$boost_root/include/boost/fiber/all.hpp],,
+    [
+        AC_MSG_ERROR([Unable to use $boost_root/include/boost/fiber/all.hpp header])
+    ])
+  AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM([#include $boost_root/include/boost/fiber/all.hpp], [boost::fibers::fiber f()])],
+      [],[AC_MSG_CHECKING([for fiber() in -lboost_fiber])],[AC_MSG_ERROR([Unable to link with Boost Fiber])])  
+  CPPFLAGS="$old_CPPFLAGS"
+  LDFLAGS="$old_LDFLAGS"
+  AC_LANG_POP([C++])
+
+  AC_DEFINE(SUPPORT_BOOST, 1, [Supporting Boost])
+  AC_SUBST(ENABLE_BOOST,[[1]])
+  AC_SUBST(BOOST_ROOT,$boost_root)
 fi
 
 dnl **************************************************************************
