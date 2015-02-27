@@ -21,6 +21,7 @@ namespace llvm {
 
 namespace klee {
   class Executor;
+  class CurrentInstructionContext;
   class Expr;
   class ExecutionState;
   struct KInstruction;
@@ -29,6 +30,7 @@ namespace klee {
   class SpecialFunctionHandler {
   public:
     typedef void (SpecialFunctionHandler::*Handler)(ExecutionState &state,
+                                                    CurrentInstructionContext& instrCtx,
                                                     KInstruction *target, 
                                                     std::vector<ref<Expr> > 
                                                       &arguments);
@@ -84,6 +86,7 @@ namespace klee {
     void bind();
 
     bool handle(ExecutionState &state, 
+                CurrentInstructionContext& instrCtx,
                 llvm::Function *f,
                 KInstruction *target,
                 std::vector< ref<Expr> > &arguments);
@@ -95,6 +98,7 @@ namespace klee {
     /* Handlers */
 
 #define HANDLER(name) void name(ExecutionState &state, \
+		                              CurrentInstructionContext& instrCtx, \
                                 KInstruction *target, \
                                 std::vector< ref<Expr> > &arguments)
     HANDLER(handleAbort);

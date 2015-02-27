@@ -110,6 +110,7 @@ void Executor::addTimer(Timer *timer, double rate) {
 }
 
 void Executor::processTimers(ExecutionState *current,
+                             CurrentInstructionContext& instrCtx,
                              double maxInstTime) {
 //  static unsigned callsWithoutCheck = 0;
 //  unsigned ticks = timerTicks;
@@ -181,12 +182,14 @@ void Executor::processTimers(ExecutionState *current,
       dumpStates = 0;
     }
 
-    if (maxInstTime>0 && current && !removedStates.count(current)) {
+    if (maxInstTime>0 && current && !instrCtx.removedStates.count(current)) {
       double elapsed_seconds = util::getWallTime() - start;
       if (elapsed_seconds > maxInstTime) {
         klee_warning("max-instruction-time exceeded: %.2fs",
             elapsed_seconds);
-        terminateStateEarly(*current, "max-instruction-time exceeded");
+        terminateStateEarly(*current,
+            instrCtx,
+            "max-instruction-time exceeded");
       }
     }
 

@@ -27,12 +27,15 @@ namespace klee {
   template<class T> class DiscretePDF;
   class ExecutionState;
   class Executor;
+  class CurrentInstructionContext;
 
   class Searcher {
   public:
     virtual ~Searcher();
 
-    virtual ExecutionState &selectState() = 0;
+    // xxx CurrentInstructionContext reference needed, because some searchers
+    // (merging ones) terminate states inside this method
+    virtual ExecutionState &selectState(CurrentInstructionContext& instrCtx) = 0;
 
     virtual void update(ExecutionState *current,
                         const std::set<ExecutionState*> &addedStates,
@@ -54,16 +57,30 @@ namespace klee {
 
     // utility functions
 
-    void addState(ExecutionState *es, ExecutionState *current = 0) {
-      std::set<ExecutionState*> tmp;
-      tmp.insert(es);
-      update(current, tmp, std::set<ExecutionState*>());
+    virtual void addState(ExecutionState *es) = 0; // {
+//      std::set<ExecutionState*> tmp;
+//      tmp.insert(es);
+//      update(current, tmp, std::set<ExecutionState*>());
+//    }
+
+    virtual void removeState(ExecutionState *es) = 0; // {
+//      std::set<ExecutionState*> tmp;
+//      tmp.insert(es);
+//      update(current, std::set<ExecutionState*>(), tmp);
+//    }
+
+    virtual void addStates(const std::set<ExecutionState*> &addedStates){
+      for (std::set<ExecutionState*>::const_iterator it = addedStates.begin(),
+               ie = addedStates.end(); it != ie; ++it) {
+        addState(*it);
+      }
     }
 
-    void removeState(ExecutionState *es, ExecutionState *current = 0) {
-      std::set<ExecutionState*> tmp;
-      tmp.insert(es);
-      update(current, std::set<ExecutionState*>(), tmp);
+    virtual void removeStates(const std::set<ExecutionState*> &removedStates){
+      for (std::set<ExecutionState*>::const_iterator it = removedStates.begin(),
+               ie = removedStates.end(); it != ie; ++it) {
+        removeState(*it);
+      }
     }
 
     enum CoreSearchType {
@@ -84,7 +101,7 @@ namespace klee {
     std::vector<ExecutionState*> states;
 
   public:
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -92,13 +109,15 @@ namespace klee {
     void printName(llvm::raw_ostream &os) {
       os << "DFSSearcher\n";
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
   };
 
   class BFSSearcher : public Searcher {
     std::deque<ExecutionState*> states;
 
   public:
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -106,13 +125,15 @@ namespace klee {
     void printName(llvm::raw_ostream &os) {
       os << "BFSSearcher\n";
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
   };
 
   class RandomSearcher : public Searcher {
     std::vector<ExecutionState*> states;
 
   public:
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -120,6 +141,8 @@ namespace klee {
     void printName(llvm::raw_ostream &os) {
       os << "RandomSearcher\n";
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
   };
 
   class WeightedRandomSearcher : public Searcher {
@@ -144,7 +167,7 @@ namespace klee {
     WeightedRandomSearcher(WeightType type);
     ~WeightedRandomSearcher();
 
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -161,6 +184,8 @@ namespace klee {
       default                 : os << "<unknown type>\n"; return;
       }
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
   };
 
   class RandomPathSearcher : public Searcher {
@@ -170,7 +195,7 @@ namespace klee {
     RandomPathSearcher(Executor &_executor);
     ~RandomPathSearcher();
 
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -178,6 +203,9 @@ namespace klee {
     void printName(llvm::raw_ostream &os) {
       os << "RandomPathSearcher\n";
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
+  };
   };
 
   class MergingSearcher : public Searcher {
@@ -193,7 +221,7 @@ namespace klee {
     MergingSearcher(Executor &executor, Searcher *baseSearcher);
     ~MergingSearcher();
 
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -201,6 +229,8 @@ namespace klee {
     void printName(llvm::raw_ostream &os) {
       os << "MergingSearcher\n";
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
   };
 
   class BumpMergingSearcher : public Searcher {
@@ -216,7 +246,7 @@ namespace klee {
     BumpMergingSearcher(Executor &executor, Searcher *baseSearcher);
     ~BumpMergingSearcher();
 
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -224,6 +254,8 @@ namespace klee {
     void printName(llvm::raw_ostream &os) {
       os << "BumpMergingSearcher\n";
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
   };
 
   class BatchingSearcher : public Searcher {
@@ -241,7 +273,7 @@ namespace klee {
                      unsigned _instructionBudget);
     ~BatchingSearcher();
 
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -253,6 +285,8 @@ namespace klee {
       baseSearcher->printName(os);
       os << "</BatchingSearcher>\n";
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
   };
 
   class IterativeDeepeningTimeSearcher : public Searcher {
@@ -264,7 +298,7 @@ namespace klee {
     IterativeDeepeningTimeSearcher(Searcher *baseSearcher);
     ~IterativeDeepeningTimeSearcher();
 
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -272,6 +306,8 @@ namespace klee {
     void printName(llvm::raw_ostream &os) {
       os << "IterativeDeepeningTimeSearcher\n";
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
   };
 
   class InterleavedSearcher : public Searcher {
@@ -284,7 +320,7 @@ namespace klee {
     explicit InterleavedSearcher(const searchers_ty &_searchers);
     ~InterleavedSearcher();
 
-    ExecutionState &selectState();
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -297,6 +333,8 @@ namespace klee {
         (*it)->printName(os);
       os << "</InterleavedSearcher>\n";
     }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
   };
 
 }
