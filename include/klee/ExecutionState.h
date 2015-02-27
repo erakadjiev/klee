@@ -67,8 +67,9 @@ public:
 
 private:
   // unsupported, use copy constructor
-  ExecutionState &operator=(const ExecutionState&); 
+  ExecutionState &operator=(const ExecutionState&);
   std::map< std::string, std::string > fnAliases;
+
 
 public:
   bool fakeState;
@@ -105,12 +106,14 @@ public:
 
   unsigned incomingBBIndex;
 
+  bool beingExecuted;
+
   std::string getFnAlias(std::string fn);
   void addFnAlias(std::string old_fn, std::string new_fn);
   void removeFnAlias(std::string fn);
   
 private:
-  ExecutionState() : fakeState(false), ptreeNode(0) {}
+  ExecutionState() : fakeState(false), ptreeNode(0), beingExecuted(false) {}
 
 public:
   ExecutionState(KFunction *kf);
