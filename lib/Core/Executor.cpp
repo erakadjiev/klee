@@ -133,6 +133,7 @@ using namespace metaSMT::solver;
 
 #include <boost/fiber/fiber.hpp>
 #include <boost/fiber/operations.hpp>
+#include "suppressive_round_robin.hpp"
 
 namespace {
   cl::opt<bool>
@@ -2510,9 +2511,12 @@ void Executor::bindModuleConstants() {
 void Executor::run(ExecutionState &initialState) {
   if(useDistSolver){ // && !solverServiceAddress.empty()){
 //    std::cout << "Starting main fiber\n";
+    boost::fibers::suppressive_round_robin scheduler;
+    boost::fibers::set_scheduling_algorithm(&scheduler);
     boost::fibers::fiber runFiber( [&] () {
       runInFiber(initialState);
     } );
+    scheduler.set_suppressed_fiber(runFiber.get_id());
     runFiber.join();
   } else {
     runOrigTest(initialState);
@@ -2606,57 +2610,63 @@ void Executor::runInFiber(ExecutionState &initialState) {
   searcher->addStates(states);
 
   int runningFibers = 0;
-  const int maxFibers = 1000;
+//  const int maxFibers = 1000;
 //  const int maxFibers = (MaxForks != ~0u) ? MaxForks-1 : 10000;run
-  bool done = false;
+//  bool done = false;
 
-  while ((!states.empty() || runningFibers > 0) && !haltExecution) {
-//    std::cout << "Main loop beginning\n";
-    while((searcher->empty() || runningFibers >= maxFibers) && !haltExecution){
-      if(runningFibers == 0){
-//        std::cout << "Main fiber done\n";
-        done = true;
-        break;
-      } else {
-//        std::cout << "Waiting for new states\n";
-        boost::this_fiber::yield();
-      }
+  while (!states.empty() && !haltExecution) {
+////    std::cout << "Main loop beginning\n";
+////    while((searcher->empty() || runningFibers >= maxFibers) && !haltExecution){
+//    while(searcher->empty() && !haltExecution){
+//      if(runningFibers == 0){
+////        std::cout << "Main fiber done\n";
+//        done = true;
+//        break;
+//      } else {
+////        std::cout << "Waiting for new states\n";
+//        boost::this_fiber::yield();
+//      }
+//    }
+//    if(done || haltExecution){
+//      break;
+//    }
+    
+    if(!searcher->empty()){
+      ++runningFibers;
+      boost::fibers::fiber( [&] () {
+  
+        CurrentInstructionContext instrCtx;
+  
+        while(!searcher->empty() && !haltExecution){
+    //      std::cout << "In child fiber.\n";
+          ExecutionState &state = searcher->selectState(instrCtx);
+          KInstruction *ki = state.pc;
+          stepInstruction(state);
+    //      boost::this_fiber::yield();
+          executeInstruction(state, instrCtx, ki);
+          processTimers(&state, instrCtx, MaxInstructionTime);
+    
+          checkMaxMemory(state, instrCtx);
+    
+          updateStates(&state, instrCtx);
+        }
+        
+        --runningFibers;
+  //      std::cout << "Child fiber exiting.\n";
+      } ).detach();
+    } else {
+      static_cast<DistributedSolver*>(coreSolver)->waitForResponse();
     }
-    if(done || haltExecution){
-      break;
-    }
-
-    ++runningFibers;
-//    boost::fibers::fiber f( [&] () {
-    boost::fibers::fiber( [&] () {
-
-      CurrentInstructionContext instrCtx;
-
-//      std::cout << "In child fiber.\n";
-      ExecutionState &state = searcher->selectState(instrCtx);
-      KInstruction *ki = state.pc;
-      stepInstruction(state);
-//      boost::this_fiber::yield();
-      executeInstruction(state, instrCtx, ki);
-      processTimers(&state, instrCtx, MaxInstructionTime);
-
-      checkMaxMemory(state, instrCtx);
-
-      updateStates(&state, instrCtx);
-      --runningFibers;
-//      std::cout << "Child fiber exiting.\n";
-    } ).detach();
-//    } );
-//    f.join();
+    
     boost::this_fiber::yield();
   }
 
   delete searcher;
   searcher = 0;
 
-  if(DistributedSolver* distSolver = static_cast<DistributedSolver*>(coreSolver)){
-    distSolver->stop();
-  }
+//  if(DistributedSolver* distSolver = static_cast<DistributedSolver*>(coreSolver)){
+//    distSolver->stop();
+//  }
 
   CurrentInstructionContext tmp;
   dumpStatesIfRequired(tmp);

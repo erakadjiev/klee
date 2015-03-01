@@ -241,7 +241,7 @@ namespace klee {
 
       virtual char* getConstraintLog(const Query&);
       virtual void setCoreSolverTimeout(double timeout);
-      virtual void stop();
+      virtual void waitForResponse();
   };
 
   class SMTLIBSolver : public Solver {
