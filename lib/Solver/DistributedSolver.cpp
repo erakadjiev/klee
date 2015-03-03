@@ -27,18 +27,13 @@
 #include "SMTLIBOutputLexer.h"
 
 #include "SolverStats.h"
-#include "zmq_asio_socket.hpp"
 
 #include "llvm/Support/CommandLine.h"
 
 #include <czmq.h>
 
-//#include <boost/bind.hpp>
-//#include <boost/asio/io_service.hpp>
 #include <boost/fiber/fiber.hpp>
 #include <boost/fiber/future.hpp>
-//#include <boost/fiber/asio/spawn.hpp>
-//#include <boost/fiber/asio/loop.hpp>
 #include <unordered_map>
 
 namespace SMTLIBSolverOpts {
@@ -59,33 +54,25 @@ namespace klee {
 
       ExprSMTLIBPrinter* printer;
 
-//      boost::asio::io_service ioService;
-
       zsock_t* discovery;
       zsock_t* service;
       zpoller_t* service_poller;
-//      zmq_asio_socket* serviceAsio;
       zhashx_t* solvers;
-
-//      boost::fibers::fiber loopFiber;
 
       std::unordered_map<unsigned int, boost::fibers::promise<std::string>> pendingQueries;
 
       unsigned int reqId;
       const unsigned int maxId = UINT_MAX-1;
 
-//      bool stopped;
 
       void giveUp();
 
       void findAndSetSolverBackends();
-//      const boost::asio::io_service& getAsioIoService() const;
       std::string buildSMTLIBv2String(const Query& q,
           const std::vector<const Array*>& arrays);
       std::string buildSMTLIBv2String(const Query& q);
       int generateRequestId();
       std::string sendQuery(std::string query);
-//      void receiveSolverResponse(boost::fibers::asio::yield_context yield);
       virtual SolverImpl::SolverRunStatus solveRemotely(const Query& q,
           const std::vector<const Array*>& objects,
           std::vector<std::vector<unsigned char> >& values,
@@ -148,22 +135,12 @@ namespace klee {
     assert(service);
     assert(service_poller);
 
-//    serviceAsio = new zmq_asio_socket(service, ioService);
-//    // XXX is this needed?
-//    serviceAsio->non_blocking(true);
-
-//    std::cout << "client1 starting...\n";
     findAndSetSolverBackends();
-
-//    boost::fibers::asio::spawn(ioService, boost::bind(receiveSolverResponse, std::ref(serviceAsio), _1));
-//    boost::fibers::asio::spawn(ioService, [&] (boost::fibers::asio::yield_context yield) { receiveSolverResponse(yield); });
-//    loopFiber = boost::fibers::fiber(boost::bind(boost::fibers::asio::run_service, std::ref(ioService)));
   }
 
   DistributedSolverImpl::~DistributedSolverImpl() {
     zhashx_destroy(&solvers);
     zsock_set_linger(service, 0);
-//    delete serviceAsio;
     zsock_destroy(&discovery);
     zpoller_destroy(&service_poller);
     zsock_destroy(&service);
@@ -185,10 +162,6 @@ namespace klee {
     }
 //    std::cout << "}\n";
   }
-//
-//  const boost::asio::io_service& DistributedSolverImpl::getAsioIoService() const{
-//    return ioService;
-//  }
 
   void DistributedSolverImpl::giveUp() {
     klee_error("DistributedSolverImpl: Giving up!");
@@ -292,10 +265,6 @@ namespace klee {
 
   std::string DistributedSolverImpl::sendQuery(std::string query){
     // std::cout << id << " starts\n";
-    // boost::system::error_code ec;
-    // if((zsock_events(service) & ZMQ_POLLOUT) != ZMQ_POLLOUT){
-    //  boost::asio::async_write(asio_sock, boost::asio::null_buffers(), boost::fibers::asio::yield[ec]);
-    // }
     // std::cout << "Sending SMT query to sock\n";
     int req_id = generateRequestId();
     zstr_sendm(service, std::to_string(req_id).c_str());
@@ -378,51 +347,6 @@ namespace klee {
     }
   }
   
-//
-//  void DistributedSolverImpl::receiveSolverResponse(boost::fibers::asio::yield_context yield){
-//    boost::system::error_code ec;
-//    while(!stopped){
-//      if(!(zsock_events(service) & ZMQ_POLLIN)){
-//        serviceAsio->async_read_some(boost::asio::null_buffers(), yield[ec]);
-//        if(stopped){
-////          std::cout << "Reader stopping\n";
-//          break;
-//        }
-//      }
-//      while(zsock_events(service) & ZMQ_POLLIN){
-//        zmsg_t* msg = zmsg_recv(service);
-//        char* response_id = zmsg_popstr(msg);
-//        char* response = zmsg_popstr(msg);
-//        zmsg_destroy(&msg);
-//        //          std::cout << boost::fibers::detail::scheduler::instance()->active()->get_id() << " received reply\n";
-//
-//        auto elem = pendingQueries.find(std::stoi(response_id));
-//
-//        if ( elem == pendingQueries.end() ){
-//          std::cout << "Promise not found\n";
-//        }
-//        else {
-//          elem->second.set_value(std::string(response));
-//        }
-//
-//        zstr_free(&response_id);
-//        zstr_free(&response);
-//        //          boost::this_fiber::yield();
-//      }
-////      boost::this_fiber::yield();
-//    }
-//  }
-//
-//  void DistributedSolverImpl::stop(){
-//    stopped = true;
-//    serviceAsio->cancel();
-//    // Give the reader a chance to exit. If we stop the io_service, it will be stuck.
-//    boost::this_fiber::yield();
-//    ioService.stop();
-////    std::cout << "Joining loop fiber\n";
-//    loopFiber.join();
-//  }
-
   SolverImpl::SolverRunStatus DistributedSolverImpl::parseSolverOutput(const std::string& solverOutput,
       const std::vector<const Array*>& objects,
       std::vector<std::vector<unsigned char> >& values,
