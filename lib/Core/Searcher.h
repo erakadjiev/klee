@@ -240,7 +240,8 @@ namespace klee {
           const std::set<ExecutionState*> &removedStates);
       bool empty() { return baseSearcher->empty(); }
       void printName(llvm::raw_ostream &os) {
-        os << "StateRemovingSearcher\n";
+        os << "StateRemovingSearcher containing:\n";
+        baseSearcher->printName(os);
       }
       virtual void addState(ExecutionState *es);
       virtual void removeState(ExecutionState *es);

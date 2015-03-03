@@ -326,6 +326,7 @@ namespace klee {
         } else {
           std::cout << "Service poller failed (unknown reason)\n";
         }
+        return;
       }
     }
     while (zsock_events(service) & ZMQ_POLLIN) {
