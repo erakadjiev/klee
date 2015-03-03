@@ -50,6 +50,48 @@ void PTree::remove(Node *n) {
   } while (n && !n->left && !n->right);
 }
 
+PTreeNode* PTree::getSibling(Node* n){
+  Node* p = n->parent;
+  Node* s = 0;
+  if(p){
+    if(n == p->left){
+      s = p->right;
+    } else {
+      assert(n == p->right);
+      s = p->left;
+    }
+  }
+  return s;
+}
+
+bool PTree::isBeingExecuted(Node* n){
+  return n->beingExecuted;
+}
+
+void PTree::setBeingExecuted(Node* n, bool exec){
+  if(exec){
+    n->beingExecuted = true;
+    
+    Node* s = getSibling(n);
+    Node* p = n->parent;
+    while(p && !p->beingExecuted && (!s || s->beingExecuted)){
+      p->beingExecuted = true;
+      if(p->parent){
+        s = getSibling(p);
+      }
+      p = p->parent;
+    }
+  } else {
+    n->beingExecuted = false;
+    
+    Node* p = n->parent; 
+    while(p && p->beingExecuted){
+      p->beingExecuted = false;
+      p = p->parent;
+    }
+  }
+}
+
 void PTree::dump(llvm::raw_ostream &os) {
   ExprPPrinter *pp = ExprPPrinter::create(os);
   pp->setNewline("\\l");
@@ -94,7 +136,8 @@ PTreeNode::PTreeNode(PTreeNode *_parent,
     left(0),
     right(0),
     data(_data),
-    condition(0) {
+    condition(0),
+    beingExecuted(false) {
 }
 
 PTreeNode::~PTreeNode() {

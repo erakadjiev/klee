@@ -106,14 +106,12 @@ public:
 
   unsigned incomingBBIndex;
 
-  bool beingExecuted;
-
   std::string getFnAlias(std::string fn);
   void addFnAlias(std::string old_fn, std::string new_fn);
   void removeFnAlias(std::string fn);
   
 private:
-  ExecutionState() : fakeState(false), ptreeNode(0), beingExecuted(false) {}
+  ExecutionState() : fakeState(false), ptreeNode(0) {}
 
 public:
   ExecutionState(KFunction *kf);

@@ -15,6 +15,7 @@
 #include <set>
 #include <map>
 #include <queue>
+#include <unordered_set>
 
 namespace llvm {
   class BasicBlock;
@@ -88,6 +89,7 @@ namespace klee {
       BFS,
       RandomState,
       RandomPath,
+      ConcurrentRandomPath,
       NURS_CovNew,
       NURS_MD2U,
       NURS_Depth,
@@ -202,6 +204,25 @@ namespace klee {
     bool empty();
     void printName(llvm::raw_ostream &os) {
       os << "RandomPathSearcher\n";
+    }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
+  };
+
+  class ConcurrentRandomPathSearcher : public Searcher {
+    Executor &executor;
+
+  public:
+    ConcurrentRandomPathSearcher(Executor &_executor);
+    ~ConcurrentRandomPathSearcher();
+
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    void update(ExecutionState *current,
+                const std::set<ExecutionState*> &addedStates,
+                const std::set<ExecutionState*> &removedStates);
+    bool empty();
+    void printName(llvm::raw_ostream &os) {
+      os << "ConcurrentRandomPathSearcher\n";
     }
     virtual void addState(ExecutionState *es);
     virtual void removeState(ExecutionState *es);

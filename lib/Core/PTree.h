@@ -30,6 +30,11 @@ namespace klee {
                                  const data_type &rightData);
     void remove(Node *n);
 
+    Node* getSibling(Node* n);
+    
+    bool isBeingExecuted(Node* n);
+    void setBeingExecuted(Node* n, bool exec);
+    
     void dump(llvm::raw_ostream &os);
   };
 
@@ -41,6 +46,7 @@ namespace klee {
     ref<Expr> condition;
 
   private:
+    bool beingExecuted;
     PTreeNode(PTreeNode *_parent, ExecutionState *_data);
     ~PTreeNode();
   };

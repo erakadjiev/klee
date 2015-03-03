@@ -96,6 +96,7 @@ class Executor : public Interpreter {
   friend class BumpMergingSearcher;
   friend class MergingSearcher;
   friend class RandomPathSearcher;
+  friend class ConcurrentRandomPathSearcher;
   friend class OwningSearcher;
   friend class WeightedRandomSearcher;
   friend class SpecialFunctionHandler;
@@ -197,7 +198,8 @@ private:
   void runOrigTest(ExecutionState &initialState);
   void runInFiber(ExecutionState &initialState);
 
-  void checkMaxMemory(ExecutionState &current, CurrentInstructionContext& instrCtx);
+  void checkMaxMemory(ExecutionState &current, 
+      CurrentInstructionContext& instrCtx);
   void dumpStatesIfRequired(CurrentInstructionContext& instrCtx);
 
   // Given a concrete object in our [klee's] address space, add it to 

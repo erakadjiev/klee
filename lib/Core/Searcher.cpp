@@ -46,6 +46,8 @@
 #include <fstream>
 #include <climits>
 
+#include <unordered_set>
+
 using namespace klee;
 using namespace llvm;
 
@@ -310,7 +312,7 @@ ExecutionState &RandomPathSearcher::selectState(CurrentInstructionContext& instr
       n = (flips&(1<<bits)) ? n->left : n->right;
     }
   }
-
+  
   return *n->data;
 }
 
@@ -327,6 +329,61 @@ void RandomPathSearcher::addState(ExecutionState *es){
 }
 
 void RandomPathSearcher::removeState(ExecutionState *es){
+}
+
+///
+
+ConcurrentRandomPathSearcher::ConcurrentRandomPathSearcher(Executor &_executor)
+  : executor(_executor) {
+}
+
+ConcurrentRandomPathSearcher::~ConcurrentRandomPathSearcher() {
+}
+
+ExecutionState &ConcurrentRandomPathSearcher::selectState(CurrentInstructionContext& instrCtx) {
+  unsigned flips=0, bits=0;
+  PTree* ptree = executor.processTree;
+  PTree::Node *n = ptree->root;
+  
+  while (!n->data) {
+    if (!n->left || ptree->isBeingExecuted(n->left)) {
+      n = n->right;
+    } else if (!n->right || ptree->isBeingExecuted(n->right)) {
+      n = n->left;
+    } else {
+      if (bits==0) {
+        flips = theRNG.getInt32();
+        bits = 32;
+      }
+      --bits;
+      n = (flips&(1<<bits)) ? n->left : n->right;
+    }
+    assert(n && !ptree->isBeingExecuted(n));
+  }
+  
+  ptree->setBeingExecuted(n, true);
+  return *n->data;
+}
+
+void ConcurrentRandomPathSearcher::update(ExecutionState *current,
+                                const std::set<ExecutionState*> &addedStates,
+                                const std::set<ExecutionState*> &removedStates) {
+  executor.processTree->setBeingExecuted(current->ptreeNode, false);
+  addStates(addedStates);
+  removeStates(removedStates);
+}
+
+bool ConcurrentRandomPathSearcher::empty() {
+  PTree::Node* root = executor.processTree->root;
+  return !root || executor.processTree->isBeingExecuted(root); 
+}
+
+void ConcurrentRandomPathSearcher::addState(ExecutionState *es){
+  executor.processTree->setBeingExecuted(es->ptreeNode, false);
+}
+
+void ConcurrentRandomPathSearcher::removeState(ExecutionState *es){
+  executor.processTree->setBeingExecuted(es->ptreeNode, true);
 }
 
 ///
@@ -439,14 +496,12 @@ StateRemovingSearcher::~StateRemovingSearcher() {
 ExecutionState &StateRemovingSearcher::selectState(CurrentInstructionContext& instrCtx) {
   ExecutionState& s = baseSearcher->selectState(instrCtx);
   baseSearcher->removeState(&s);
-  s.beingExecuted = true;
   return s;
 }
 
 void StateRemovingSearcher::update(ExecutionState *current,
                               const std::set<ExecutionState*> &addedStates,
                               const std::set<ExecutionState*> &removedStates) {
-  current->beingExecuted = false;
   baseSearcher->addState(current);
   baseSearcher->update(current, addedStates, removedStates);
 }
