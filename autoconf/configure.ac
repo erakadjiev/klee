@@ -681,7 +681,7 @@ else
   old_CPPFLAGS="$CPPFLAGS"
   old_LDFLAGS="$LDFLAGS"  
   CPPFLAGS="$CPPFLAGS -std=c++14 -I$boost_root/include"
-  LDFLAGS="$LDFLAGS -L$boost_root/lib -lboost_fiber -lboost_context -lboost_thread -lboost_system"
+  LDFLAGS="$LDFLAGS -L$boost_root/lib -lboost_fiber -lboost_context"
   AC_CHECK_HEADER([$boost_root/include/boost/fiber/all.hpp],,
     [
         AC_MSG_ERROR([Unable to use $boost_root/include/boost/fiber/all.hpp header])

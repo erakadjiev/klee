@@ -27,4 +27,6 @@ endif
 
 ifeq ($(ENABLE_BOOST),1)
   CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags))
+  C.Flags += -fsplit-stack -DBOOST_USE_SEGMENTED_STACKS
+  CXX.Flags += -fsplit-stack -DBOOST_USE_SEGMENTED_STACKS
 endif

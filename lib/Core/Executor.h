@@ -199,7 +199,7 @@ private:
   void runInFiber(ExecutionState &initialState);
 
   void checkMaxMemory(ExecutionState &current, 
-      CurrentInstructionContext& instrCtx);
+      CurrentInstructionContext& instrCtx, int runningFibers);
   void dumpStatesIfRequired(CurrentInstructionContext& instrCtx);
 
   // Given a concrete object in our [klee's] address space, add it to 

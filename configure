@@ -5309,6 +5309,8 @@ if test X$with_boost = Xno ; then
   ENABLE_BOOST=0
 
 else
+  KLEE_USE_CXX14=1
+
   if test X$with_boost = X -o X$with_boost = Xyes ; then
     with_boost="/usr/local"
   fi
@@ -5323,7 +5325,7 @@ ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
   old_CPPFLAGS="$CPPFLAGS"
   old_LDFLAGS="$LDFLAGS"
   CPPFLAGS="$CPPFLAGS -std=c++14 -I$boost_root/include"
-  LDFLAGS="$LDFLAGS -L$boost_root/lib -lboost_fiber -lboost_context -lboost_thread -lboost_system"
+  LDFLAGS="$LDFLAGS -L$boost_root/lib -lboost_fiber -lboost_context"
   as_ac_Header=`$as_echo "ac_cv_header_$boost_root/include/boost/fiber/all.hpp" | $as_tr_sh`
 ac_fn_cxx_check_header_mongrel "$LINENO" "$boost_root/include/boost/fiber/all.hpp" "$as_ac_Header" "$ac_includes_default"
 if eval test \"x\$"$as_ac_Header"\" = x"yes"; then :
@@ -6691,7 +6693,6 @@ ac_clean_files=$ac_clean_files_save
 
 test $ac_write_fail = 0 ||
   as_fn_error $? "write failure creating $CONFIG_STATUS" "$LINENO" 5
-
 
 # configure is writing to config.log, and then calls config.status.
 # config.status does its own redirection, appending to config.log.

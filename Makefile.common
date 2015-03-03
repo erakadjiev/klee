@@ -69,8 +69,14 @@ endif
 
 # For Boost
 ifeq ($(ENABLE_BOOST),1)
+  # LLVM < 3.4 doesn't support split stacks
+  ifeq ($(shell test $(LLVM_VERSION_MAJOR) -lt 3 -o $(LLVM_VERSION_MAJOR) -eq 3 -a $(LLVM_VERSION_MINOR) -lt 4; echo $$?),0)
+    LD.Flags += -static-libgcc
+  endif
   LD.Flags += -L$(BOOST_ROOT)/lib
   CXX.Flags += -I$(BOOST_ROOT)/include
+  C.Flags += -fsplit-stack -DBOOST_USE_SEGMENTED_STACKS
+  CXX.Flags += -fsplit-stack -DBOOST_USE_SEGMENTED_STACKS
   CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags))
 endif
 

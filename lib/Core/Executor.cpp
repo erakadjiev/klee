@@ -132,6 +132,7 @@ using namespace metaSMT::solver;
 #endif /* SUPPORT_METASMT */
 
 #include <boost/fiber/fiber.hpp>
+#include <boost/fiber/segmented_stack.hpp>
 #include <boost/fiber/operations.hpp>
 #include "suppressive_round_robin.hpp"
 
@@ -2421,7 +2422,6 @@ void Executor::executeInstruction(ExecutionState &state,
 void Executor::updateStates(ExecutionState *current,
                             CurrentInstructionContext& instrCtx) {
   if (searcher) {
-    // TODO change Searcher API to pass only current context
     searcher->update(current, instrCtx.addedStates, instrCtx.removedStates);
   }
   
@@ -2513,7 +2513,7 @@ void Executor::run(ExecutionState &initialState) {
 //    std::cout << "Starting main fiber\n";
     boost::fibers::suppressive_round_robin scheduler;
     boost::fibers::set_scheduling_algorithm(&scheduler);
-    boost::fibers::fiber runFiber( [&] () {
+    boost::fibers::fiber runFiber(std::allocator_arg, boost::fibers::segmented_stack(), [&] () {
       runInFiber(initialState);
     } );
     scheduler.set_suppressed_fiber(runFiber.get_id());
@@ -2633,7 +2633,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
     
     if(!searcher->empty()){
       ++runningFibers;
-      boost::fibers::fiber( [&] () {
+      boost::fibers::fiber(std::allocator_arg, boost::fibers::segmented_stack(), [&] () {
   
         CurrentInstructionContext instrCtx;
   
@@ -2646,7 +2646,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
           executeInstruction(state, instrCtx, ki);
           processTimers(&state, instrCtx, MaxInstructionTime);
     
-          checkMaxMemory(state, instrCtx);
+          checkMaxMemory(state, instrCtx, runningFibers);
     
           updateStates(&state, instrCtx);
         }
@@ -2655,6 +2655,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
   //      std::cout << "Child fiber exiting.\n";
       } ).detach();
     } else {
+//      std::cout << "Searcher empty\n";
       static_cast<DistributedSolver*>(coreSolver)->waitForResponse();
     }
     
@@ -2789,7 +2790,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
       executeInstruction(state, instrCtx, ki);
       processTimers(&state, instrCtx, MaxInstructionTime);
 
-      checkMaxMemory(state, instrCtx);
+      checkMaxMemory(state, instrCtx, 1);
 
       updateStates(&state, instrCtx);
 //      --runningFibers;
@@ -2804,7 +2805,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
   dumpStatesIfRequired(tmp);
 }
 
-void Executor::checkMaxMemory(ExecutionState& current, CurrentInstructionContext& instrCtx){
+void Executor::checkMaxMemory(ExecutionState& current, CurrentInstructionContext& instrCtx, int runningFibers){
   if (MaxMemory) {
     if ((stats::instructions & 0xFFFF) == 0) {
       // We need to avoid calling GetMallocUsage() often because it
@@ -2818,16 +2819,17 @@ void Executor::checkMaxMemory(ExecutionState& current, CurrentInstructionContext
           unsigned toKill = std::max(1U, numStates - numStates*MaxMemory/mbs);
 
           std::vector<ExecutionState*> idleStates;
-          // current state is okay to terminate
-          idleStates.push_back(&current);
+          idleStates.reserve(numStates - runningFibers + 1);
           for(std::set<ExecutionState*>::iterator it = states.begin(), ie = states.end(); it != ie; ++it){
             ExecutionState* s = *it;
-            if(!s->beingExecuted){
+            // current state is okay to terminate
+            if(s == &current || !processTree->isBeingExecuted(s->ptreeNode)){
               idleStates.push_back(s);
             }
           }
           toKill = std::min(toKill, (unsigned)(idleStates.size()));
-
+          
+          
           if (MaxMemoryInhibit)
             klee_warning("killing %d states (over memory cap)",
                 toKill);
