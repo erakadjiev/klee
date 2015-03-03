@@ -1,4 +1,4 @@
-//===-- SMTLIBSolver.cpp ------------------------------------------*- C++ -*-===//
+//===-- DistributedSolver.cpp ------------------------------------------*- C++ -*-===//
 //
 //                     The KLEE Symbolic Virtual Machine
 //
@@ -48,7 +48,6 @@ namespace SMTLIBSolverOpts {
           llvm::cl::init(false));
 }
 
-using namespace std;
 namespace klee {
   class DistributedSolverImpl: public SolverImpl {
     private:
@@ -72,7 +71,7 @@ namespace klee {
 
       std::unordered_map<unsigned int, boost::fibers::promise<std::string>> pendingQueries;
 
-      int reqId;
+      unsigned int reqId;
       const unsigned int maxId = UINT_MAX-1;
 
 //      bool stopped;
@@ -136,9 +135,9 @@ namespace klee {
     static_cast<DistributedSolverImpl*>(impl)->waitForResponse();
   }
   
-  // ------------------------------------- SMTLIBSolverImpl methods ----------------------------------------
+  // ------------------------------------- DistributedSolverImpl methods ----------------------------------------
   
-  DistributedSolverImpl::DistributedSolverImpl(const string _solverAddress) :
+  DistributedSolverImpl::DistributedSolverImpl(const std::string _solverAddress) :
           timeout(0.0), _runStatusCode(SOLVER_RUN_STATUS_FAILURE), discovery(zsock_new_req(_solverAddress.c_str())),
           service(zsock_new(ZMQ_DEALER)), service_poller(zpoller_new(service, NULL)), solvers(NULL), reqId(0) {
     // FIXME there should be an initial run status code (e.g. _UNKNOWN or _RUNNING)
@@ -192,7 +191,7 @@ namespace klee {
 //  }
 
   void DistributedSolverImpl::giveUp() {
-    klee_error("SMTLIBSolverImpl: Giving up!");
+    klee_error("DistributedSolverImpl: Giving up!");
   }
   
   void DistributedSolverImpl::setCoreSolverTimeout(double _timeout) {
@@ -351,7 +350,13 @@ namespace klee {
     while (!(zsock_events(service) & ZMQ_POLLIN)){
       void* ret = zpoller_wait(service_poller, -1);
       if(ret == NULL){
-        std::cout << "Service poller failed\n";
+        if(zpoller_terminated(service_poller)){
+          std::cout << "Service poller terminated\n";
+        } else if (zpoller_expired(service_poller)){
+          std::cout << "Service poller expired\n";
+        } else {
+          std::cout << "Service poller failed (unknown reason)\n";
+        }
       }
     }
     while (zsock_events(service) & ZMQ_POLLIN) {
@@ -434,13 +439,13 @@ namespace klee {
      * set of assertions was satisfiable
      */
     if (!lexer.getNextToken(t)) {
-      klee_warning("SMTLIBSolverImpl: Lexer failed to get token");
+      klee_warning("DistributedSolverImpl: Lexer failed to get token");
       return SOLVER_RUN_STATUS_FAILURE;
     }
 
     switch (t) {
       case SMTLIBOutputLexer::UNKNOWN_TOKEN:
-        klee_warning("SMTLIBSolverImpl : Solver responded unknown");
+        klee_warning("DistributedSolverImpl : Solver responded unknown");
         return SOLVER_RUN_STATUS_FAILURE;
       case SMTLIBOutputLexer::UNSAT_TOKEN:
         //not satisfiable
@@ -450,8 +455,8 @@ namespace klee {
         hasSolution = true;
         break;
       default:
-        cerr << "SMTLIBSolverImpl : Unexpected token `"
-        << lexer.getLastTokenContents() << "`" << endl;
+        std::cerr << "DistributedSolverImpl : Unexpected token `"
+        << lexer.getLastTokenContents() << "`" << std::endl;
         giveUp();
         return SOLVER_RUN_STATUS_FAILURE;
     }
@@ -487,7 +492,7 @@ namespace klee {
           if (!lexer.getNextToken(t)
               || t != SMTLIBOutputLexer::LBRACKET_TOKEN) {
             klee_error(
-                "SMTLIBSolverImpl: Lexer failed to get token for array assignment. Expected `(`");
+                "DistributedSolverImpl: Lexer failed to get token for array assignment. Expected `(`");
             return SOLVER_RUN_STATUS_FAILURE;
           }
         }
@@ -495,7 +500,7 @@ namespace klee {
         // Expect "select"
         if (!lexer.getNextToken(t) || t != SMTLIBOutputLexer::SELECT_TOKEN) {
           klee_error(
-              "SMTLIBSolverImpl: Lexer failed to get token for array assignment. Expected `select`");
+              "DistributedSolverImpl: Lexer failed to get token for array assignment. Expected `select`");
           return SOLVER_RUN_STATUS_FAILURE;
         }
 
@@ -503,11 +508,11 @@ namespace klee {
         if (!lexer.getNextToken(t)
             || t != SMTLIBOutputLexer::ARRAY_IDENTIFIER_TOKEN
             || (*it)->name != lexer.getLastTokenContents()) {
-          cerr
-          << "SMTLIBSolverImpl: Lexer failed to get array identifier token."
-          << endl << "Expected array name `" << (*it)->name
+          std::cerr
+          << "DistributedSolverImpl: Lexer failed to get array identifier token."
+          << std::endl << "Expected array name `" << (*it)->name
           << "`. Instead received token `" << lexer.getLastTokenContents()
-          << "`" << endl;
+          << "`" << std::endl;
           giveUp();
           return SOLVER_RUN_STATUS_FAILURE;
         }
@@ -519,10 +524,10 @@ namespace klee {
             || !lexer.getLastNumericValue(foundByteNumber)
             || foundByteNumber != byteNumber) {
           klee_warning(
-              "SMTLIBSolverImpl : Lexer failed to get token for array assignment.");
-          cerr << "Expected (_ bv" << foundByteNumber << " "
+              "DistributedSolverImpl : Lexer failed to get token for array assignment.");
+          std::cerr << "Expected (_ bv" << foundByteNumber << " "
               << (*it)->getDomain() << " ). Instead received"
-              "token " << lexer.getLastTokenContents() << endl;
+              "token " << lexer.getLastTokenContents() << std::endl;
           giveUp();
           return SOLVER_RUN_STATUS_FAILURE;
         }
@@ -530,7 +535,7 @@ namespace klee {
         //Expect ")"
         if (!lexer.getNextToken(t) || t != SMTLIBOutputLexer::RBRACKET_TOKEN) {
           klee_error(
-              "SMTLIBSolverImpl: Lexer failed to get token for array assignment. Expected `)`");
+              "DistributedSolverImpl: Lexer failed to get token for array assignment. Expected `)`");
           return SOLVER_RUN_STATUS_FAILURE;
         }
 
@@ -541,21 +546,21 @@ namespace klee {
                 && t != SMTLIBOutputLexer::NUMERAL_BASE16_TOKEN
                 && t != SMTLIBOutputLexer::NUMERAL_BASE2_TOKEN)) {
           klee_error(
-              "SMTLIBSolverImpl : Lexer failed to get token for array assignment."
+              "DistributedSolverImpl : Lexer failed to get token for array assignment."
               " Expected bitvector value.");
           return SOLVER_RUN_STATUS_FAILURE;
         }
 
         if (!lexer.getLastNumericValue(determinedByteValue)) {
           klee_error(
-              "SMTLIBSolverImpl : Lexer could not get the numeric value of the "
+              "DistributedSolverImpl : Lexer could not get the numeric value of the "
               "found bitvector constant");
           return SOLVER_RUN_STATUS_FAILURE;
         }
 
         if (determinedByteValue > 255) {
           klee_error(
-              "SMTLIBSolverImpl: Determined value for bitvector byte was out of range!");
+              "DistributedSolverImpl: Determined value for bitvector byte was out of range!");
         }
 
         byteValue = determinedByteValue;
@@ -570,7 +575,7 @@ namespace klee {
           if (!lexer.getNextToken(t)
               || t != SMTLIBOutputLexer::RBRACKET_TOKEN) {
             klee_error(
-                "SMTLIBSolverImpl: Lexer failed to get token for array assignment. Expected `)`");
+                "DistributedSolverImpl: Lexer failed to get token for array assignment. Expected `)`");
             return SOLVER_RUN_STATUS_FAILURE;
           }
         }
