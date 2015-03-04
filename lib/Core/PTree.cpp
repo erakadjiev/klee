@@ -85,12 +85,40 @@ void PTree::setBeingExecuted(Node* n, bool exec){
     n->beingExecuted = false;
     
     Node* p = n->parent; 
+    /*
+     * Find the first parent that is locked.
+     * 
+     * If a multi-level subtree has been added, 
+     * then this parent is not necessarily the first one
+     */ 
+    while(p && !p->beingExecuted){
+      p = p->parent;
+    }
+    /*
+     * Then "unlock" all "locked" grandparents
+     */
     while(p && p->beingExecuted){
       p->beingExecuted = false;
       p = p->parent;
     }
   }
 }
+
+//void PTree::tempdump() {
+//  std::vector<PTree::Node*> stack;
+//  stack.push_back(root);
+//  while (!stack.empty()) {
+//    PTree::Node *n = stack.back();
+//    stack.pop_back();
+//    std::cout << n << " (" << ((n->beingExecuted) ? "exec" : "noex") << "): data(" << n->data << "), left(" << n->left << "), right(" << n->right << ")\n";
+//    if (n->left) {
+//      stack.push_back(n->left);
+//    }
+//    if (n->right) {
+//      stack.push_back(n->right);
+//    }
+//  }
+//}
 
 void PTree::dump(llvm::raw_ostream &os) {
   ExprPPrinter *pp = ExprPPrinter::create(os);
