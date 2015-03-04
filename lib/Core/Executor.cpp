@@ -2659,12 +2659,11 @@ void Executor::runInFiber(ExecutionState &initialState) {
           ExecutionState &state = searcher->selectState(instrCtx);
           KInstruction *ki = state.pc;
           stepInstruction(state);
-    //      boost::this_fiber::yield();
+
           executeInstruction(state, instrCtx, ki);
           processTimers(&state, instrCtx, MaxInstructionTime);
-    
           checkMaxMemory(state, instrCtx, runningFibers);
-    
+          
           updateStates(&state, instrCtx);
         }
         
@@ -2673,6 +2672,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
       } ).detach();
     } else {
 //      std::cout << "Searcher empty\n";
+      assert(runningFibers > 0);
       static_cast<DistributedSolver*>(coreSolver)->waitForResponse();
     }
     
@@ -2681,10 +2681,6 @@ void Executor::runInFiber(ExecutionState &initialState) {
 
   delete searcher;
   searcher = 0;
-
-//  if(DistributedSolver* distSolver = static_cast<DistributedSolver*>(coreSolver)){
-//    distSolver->stop();
-//  }
 
   CurrentInstructionContext tmp;
   dumpStatesIfRequired(tmp);
@@ -2874,14 +2870,32 @@ void Executor::checkMaxMemory(ExecutionState& current, CurrentInstructionContext
 void Executor::dumpStatesIfRequired(CurrentInstructionContext& instrCtx){
   if (DumpStatesOnHalt && !states.empty()) {
     llvm::errs() << "KLEE: halting execution, dumping remaining states\n";
-    for (std::set<ExecutionState*>::iterator
-           it = states.begin(), ie = states.end();
-         it != ie; ++it) {
-      ExecutionState &state = **it;
-      stepInstruction(state); // keep stats rolling
-      terminateStateEarly(state, instrCtx, "Execution halting.");
+
+    int runningFibers = 0;
+    while(!states.empty()){
+      if(!runningFibers){
+        ++runningFibers;
+
+        boost::fibers::fiber(std::allocator_arg, boost::fibers::segmented_stack(), [&] () {
+          CurrentInstructionContext instrCtx;
+          
+          for (std::set<ExecutionState*>::iterator
+                 it = states.begin(), ie = states.end();
+               it != ie; ++it) {
+            ExecutionState &state = **it;
+            stepInstruction(state); // keep stats rolling
+            terminateStateEarly(state, instrCtx, "Execution halting.");
+          }
+          
+          updateStates(0, instrCtx);
+          --runningFibers;
+        } ).detach();
+      } else {
+        static_cast<DistributedSolver*>(coreSolver)->waitForResponse();
+      }
+      boost::this_fiber::yield();
     }
-    updateStates(0, instrCtx);
+    
   }
 }
 
