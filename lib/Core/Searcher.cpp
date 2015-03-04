@@ -46,7 +46,7 @@
 #include <fstream>
 #include <climits>
 
-#include <unordered_set>
+#include <utility>
 
 using namespace klee;
 using namespace llvm;
@@ -368,7 +368,7 @@ ExecutionState &ConcurrentRandomPathSearcher::selectState(CurrentInstructionCont
 void ConcurrentRandomPathSearcher::update(ExecutionState *current,
                                 const std::set<ExecutionState*> &addedStates,
                                 const std::set<ExecutionState*> &removedStates) {
-  executor.processTree->setBeingExecuted(current->ptreeNode, false);
+  addState(current);
   addStates(addedStates);
   removeStates(removedStates);
 }
@@ -690,6 +690,79 @@ void BatchingSearcher::addState(ExecutionState *es){
 }
 
 void BatchingSearcher::removeState(ExecutionState *es){
+  baseSearcher->removeState(es);
+}
+
+///
+
+ConcurrentBatchingSearcher::ConcurrentBatchingSearcher(Searcher *_baseSearcher,
+                                   double _timeBudget,
+                                   unsigned _instructionBudget) 
+  : baseSearcher(_baseSearcher),
+    timeBudget(_timeBudget),
+    instructionBudget(_instructionBudget),
+    lastState(0) {
+  
+}
+
+ConcurrentBatchingSearcher::~ConcurrentBatchingSearcher() {
+  delete baseSearcher;
+}
+
+ExecutionState &ConcurrentBatchingSearcher::selectState(CurrentInstructionContext& instrCtx) {
+  auto it = idleStates.find(lastState);
+  std::pair<ExecutionState*, BatchInfo> batchState;
+  if(it != idleStates.end()){
+    batchState = *it;
+  } else if(!idleStates.empty()){
+    batchState = *(idleStates.begin());
+    lastState = batchState.first;
+  } else {
+    lastState = &baseSearcher->selectState(instrCtx);
+    batchState = std::make_pair(lastState, BatchInfo(0,0,0));
+  }  
+  
+  const double& time = batchState.second.time;
+  const double& instructions = batchState.second.instructions;
+  if (time > timeBudget ||
+      instructions > instructionBudget) {
+    if (time > (timeBudget * 1.1)) {
+      llvm::errs() << "KLEE: increased time budget from " << timeBudget
+                   << " to " << time << "\n";
+      timeBudget = time;
+    }
+  }
+  batchState.second.lastStartTime = util::getWallTime();
+
+  idleStates.erase(lastState);
+  runningStates.insert(std::move(batchState));
+  
+  return *lastState;
+}
+
+void ConcurrentBatchingSearcher::update(ExecutionState *current,
+                              const std::set<ExecutionState*> &addedStates,
+                              const std::set<ExecutionState*> &removedStates) {
+  if(current && !runningStates.empty()){
+    assert(runningStates.count(current));
+  }
+  if (!removedStates.count(current)){
+    std::pair<ExecutionState*, BatchInfo> batchState = *(runningStates.find(current));
+    batchState.second.instructions++;
+    batchState.second.time += (util::getWallTime() - batchState.second.lastStartTime);
+    idleStates.insert(batchState);
+    lastState = current;
+  }
+  runningStates.erase(current);
+  baseSearcher->update(current, addedStates, removedStates);
+}
+
+void ConcurrentBatchingSearcher::addState(ExecutionState *es){
+  baseSearcher->addState(es);
+}
+
+void ConcurrentBatchingSearcher::removeState(ExecutionState *es){
+  idleStates.erase(es);
   baseSearcher->removeState(es);
 }
 

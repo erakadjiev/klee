@@ -121,14 +121,27 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     searcher = new InterleavedSearcher(s);
   }
 
-  if(useDistSolver){
-    searcher = new StateRemovingSearcher(searcher);
-  } else {
-    /***** Following solvers don't work together currently with the DistributedSolver *****/
-    if (UseBatchingSearch) {
+  bool hasConcurrentRandomPath = (std::find(CoreSearch.begin(), CoreSearch.end(), Searcher::ConcurrentRandomPath) != CoreSearch.end());
+  bool hasConcurrentBatching = false;
+  
+  if (UseBatchingSearch) {
+    if(useDistSolver){
+      hasConcurrentBatching = true;
+      searcher = new ConcurrentBatchingSearcher(searcher, BatchTime, BatchInstructions);
+    } else {
       searcher = new BatchingSearcher(searcher, BatchTime, BatchInstructions);
     }
+  }
   
+  /*
+   *  The use of merging or iterative deepening searchers in a concurrent 
+   *  setting has not been investigated, and is future work.
+   */  
+  if(!useDistSolver && !hasConcurrentRandomPath && !hasConcurrentBatching){
+    /*  test/Features/Searchers.c completes successfully when merging searchers 
+     *  are combined with concurrent searchers and fibers, but the actual behavior 
+     *  is different with and without concurrency.
+     */
     // merge support is experimental
     if (UseMerge) {
       assert(!UseBumpMerge);
@@ -137,11 +150,18 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     } else if (UseBumpMerge) {
       searcher = new BumpMergingSearcher(executor, searcher);
     }
-
-    if (UseIterativeDeepeningTimeSearch) {
+    
+    /*
+     *  IterativeDeepeningTimeSearcher doesn't work together currently with any 
+     *  concurrent searchers (test/Features/Searchers.c fails).
+     */
+    if (UseIterativeDeepeningTimeSearch && !useDistSolver && !hasConcurrentRandomPath && !hasConcurrentBatching) {
       searcher = new IterativeDeepeningTimeSearcher(searcher);
     }
-
+  }
+  
+  if(useDistSolver){
+    searcher = new StateRemovingSearcher(searcher);
   }
 
   llvm::raw_ostream &os = executor.getHandler().getInfoStream();

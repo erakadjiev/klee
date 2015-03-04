@@ -16,6 +16,7 @@
 #include <map>
 #include <queue>
 #include <unordered_set>
+#include <unordered_map>
 
 namespace llvm {
   class BasicBlock;
@@ -240,8 +241,9 @@ namespace klee {
           const std::set<ExecutionState*> &removedStates);
       bool empty() { return baseSearcher->empty(); }
       void printName(llvm::raw_ostream &os) {
-        os << "StateRemovingSearcher containing:\n";
+        os << "<StateRemovingSearcher> containing:\n";
         baseSearcher->printName(os);
+        os << "</StateRemovingSearcher>\n";
       }
       virtual void addState(ExecutionState *es);
       virtual void removeState(ExecutionState *es);
@@ -328,6 +330,45 @@ namespace klee {
     virtual void removeState(ExecutionState *es);
   };
 
+  class ConcurrentBatchingSearcher : public Searcher {
+    class BatchInfo{
+      public:
+        BatchInfo() : lastStartTime(0), time(0), instructions(0){}
+        BatchInfo(double lastStartTime, double time, unsigned instructions) : lastStartTime(lastStartTime), time(time), instructions(instructions){}
+        double lastStartTime;
+        double time;
+        unsigned instructions;
+    };
+    Searcher* baseSearcher;
+    double timeBudget;
+    unsigned instructionBudget;
+
+    ExecutionState* lastState;
+    std::unordered_map<ExecutionState*, BatchInfo> idleStates;
+    std::unordered_map<ExecutionState*, BatchInfo> runningStates;
+
+  public:
+    ConcurrentBatchingSearcher(Searcher *baseSearcher, 
+                     double _timeBudget,
+                     unsigned _instructionBudget);
+    ~ConcurrentBatchingSearcher();
+
+    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    void update(ExecutionState *current,
+                const std::set<ExecutionState*> &addedStates,
+                const std::set<ExecutionState*> &removedStates);
+    bool empty() { return baseSearcher->empty(); }
+    void printName(llvm::raw_ostream &os) {
+      os << "<ConcurrentBatchingSearcher> timeBudget: " << timeBudget
+         << ", instructionBudget: " << instructionBudget
+         << ", baseSearcher:\n";
+      baseSearcher->printName(os);
+      os << "</ConcurrentBatchingSearcher>\n";
+    }
+    virtual void addState(ExecutionState *es);
+    virtual void removeState(ExecutionState *es);
+  };
+  
   class IterativeDeepeningTimeSearcher : public Searcher {
     Searcher *baseSearcher;
     double time, startTime;
