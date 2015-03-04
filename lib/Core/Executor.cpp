@@ -2533,6 +2533,10 @@ void Executor::runInFiber(ExecutionState &initialState) {
   // optimization and such.
   initTimers();
 
+  int runningFibers = 0;
+//  const int maxFibers = 1000;
+//  const int maxFibers = (MaxForks != ~0u) ? MaxForks-1 : 10000;run
+
   states.insert(&initialState);
 
   if (usingSeeds) {
@@ -2542,53 +2546,71 @@ void Executor::runInFiber(ExecutionState &initialState) {
            ie = usingSeeds->end(); it != ie; ++it)
       v.push_back(SeedInfo(*it));
 
+    CurrentInstructionContext instrCtx;
     int lastNumSeeds = usingSeeds->size()+10;
     double lastTime, startTime = lastTime = util::getWallTime();
-    ExecutionState *lastState = 0;
-    CurrentInstructionContext instrCtx;
-    while (!seedMap.empty()) {
-      if (haltExecution){
-        dumpStatesIfRequired(instrCtx);
-        return;
+    while (!seedMap.empty() && !haltExecution) {
+      if(!runningFibers){
+        ++runningFibers;
+        boost::fibers::fiber(std::allocator_arg, boost::fibers::segmented_stack(), [&] () {
+          
+          ExecutionState *lastState = 0;
+          
+          while(!seedMap.empty() && !haltExecution){
+            //      std::cout << "In child fiber.\n";
+            std::map<ExecutionState*, std::vector<SeedInfo> >::iterator it =
+              seedMap.upper_bound(lastState);
+            if (it == seedMap.end())
+              it = seedMap.begin();
+            lastState = it->first;
+            unsigned numSeeds = it->second.size();
+            ExecutionState &state = *lastState;
+            KInstruction *ki = state.pc;
+            stepInstruction(state);
+      
+            executeInstruction(state, instrCtx, ki);
+            processTimers(&state, instrCtx, MaxInstructionTime * numSeeds);
+            updateStates(&state, instrCtx);
+            
+            if ((stats::instructions % 1000) == 0) {
+              int numSeeds = 0, numStates = 0;
+              for (std::map<ExecutionState*, std::vector<SeedInfo> >::iterator
+                     it = seedMap.begin(), ie = seedMap.end();
+                   it != ie; ++it) {
+                numSeeds += it->second.size();
+                numStates++;
+              }
+              double time = util::getWallTime();
+              if (SeedTime>0. && time > startTime + SeedTime) {
+                klee_warning("seed time expired, %d seeds remain over %d states",
+                             numSeeds, numStates);
+                break;
+              } else if (numSeeds<=lastNumSeeds-10 ||
+                         time >= lastTime+10) {
+                lastTime = time;
+                lastNumSeeds = numSeeds;
+                klee_message("%d seeds remaining over: %d states",
+                             numSeeds, numStates);
+              }
+            }
+          }
+          
+          --runningFibers;
+          //      std::cout << "Child fiber exiting.\n";
+        } ).detach();
+      } else {
+        //      std::cout << "Searcher empty\n";
+        static_cast<DistributedSolver*>(coreSolver)->waitForResponse();
       }
+      boost::this_fiber::yield();
 
-      std::map<ExecutionState*, std::vector<SeedInfo> >::iterator it =
-        seedMap.upper_bound(lastState);
-      if (it == seedMap.end())
-        it = seedMap.begin();
-      lastState = it->first;
-      unsigned numSeeds = it->second.size();
-      ExecutionState &state = *lastState;
-      KInstruction *ki = state.pc;
-      stepInstruction(state);
-
-      executeInstruction(state, instrCtx, ki);
-      processTimers(&state, instrCtx, MaxInstructionTime * numSeeds);
-      updateStates(&state, instrCtx);
-
-      if ((stats::instructions % 1000) == 0) {
-        int numSeeds = 0, numStates = 0;
-        for (std::map<ExecutionState*, std::vector<SeedInfo> >::iterator
-               it = seedMap.begin(), ie = seedMap.end();
-             it != ie; ++it) {
-          numSeeds += it->second.size();
-          numStates++;
-        }
-        double time = util::getWallTime();
-        if (SeedTime>0. && time > startTime + SeedTime) {
-          klee_warning("seed time expired, %d seeds remain over %d states",
-                       numSeeds, numStates);
-          break;
-        } else if (numSeeds<=lastNumSeeds-10 ||
-                   time >= lastTime+10) {
-          lastTime = time;
-          lastNumSeeds = numSeeds;
-          klee_message("%d seeds remaining over: %d states",
-                       numSeeds, numStates);
-        }
-      }
     }
 
+    if (haltExecution){
+      dumpStatesIfRequired(instrCtx);
+      return;
+    }
+    
     klee_message("seeding done (%d states remain)", (int) states.size());
 
     // XXX total hack, just because I like non uniform better but want
@@ -2608,11 +2630,6 @@ void Executor::runInFiber(ExecutionState &initialState) {
   searcher = constructUserSearcher(*this);
 
   searcher->addStates(states);
-
-  int runningFibers = 0;
-//  const int maxFibers = 1000;
-//  const int maxFibers = (MaxForks != ~0u) ? MaxForks-1 : 10000;run
-//  bool done = false;
 
   while (!states.empty() && !haltExecution) {
 ////    std::cout << "Main loop beginning\n";
