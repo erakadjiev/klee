@@ -226,8 +226,7 @@ namespace klee {
     TimerStatIncrementer t(stats::queryTime);
     
     ++stats::queries;
-    if (!objects.empty())
-      ++stats::queryCounterexamples;
+    ++stats::queryCounterexamples;
     
     _runStatusCode = solveRemotely(query, objects, values, hasSolution);
     bool success = ((SOLVER_RUN_STATUS_SUCCESS_SOLVABLE == _runStatusCode)

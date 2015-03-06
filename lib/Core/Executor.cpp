@@ -326,15 +326,18 @@ Executor::Executor(const InterpreterOptions &opts,
               break;
     };
     llvm::errs() << "Starting MetaSMTSolver(" << backend << ") ...\n";
+  } 
+  else {
+    coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
   }
-#endif /* SUPPORT_METASMT */
-
+#else
   // FIXME check for solver address for correctness
   if(useDistSolver && !solverServiceAddress.empty()){
     coreSolver = new DistributedSolver(solverServiceAddress);
   } else {
     coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
   }
+#endif /* SUPPORT_METASMT */
   
    
   Solver *solver = 

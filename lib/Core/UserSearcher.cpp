@@ -27,7 +27,7 @@ namespace {
 			clEnumValN(Searcher::BFS, "bfs", "use Breadth First Search (BFS)"),
 			clEnumValN(Searcher::RandomState, "random-state", "randomly select a state to explore"),
 			clEnumValN(Searcher::RandomPath, "random-path", "use Random Path Selection (see OSDI'08 paper)"),
-			clEnumValN(Searcher::ConcurrentRandomPath, "concurrent-random-path", "use Concurrent Random Path Selection (i.e. multiple states can be executed concurrently)"),
+			clEnumValN(Searcher::ConcurrentRandomPath, "concurrent-random-path", "use Concurrent Random Path Selection (i.e. multiple paths can be executed concurrently)"),
 			clEnumValN(Searcher::NURS_CovNew, "nurs:covnew", "use Non Uniform Random Search (NURS) with Coverage-New"),
 			clEnumValN(Searcher::NURS_MD2U, "nurs:md2u", "use NURS with Min-Dist-to-Uncovered"),
 			clEnumValN(Searcher::NURS_Depth, "nurs:depth", "use NURS with 2^depth"),
@@ -82,13 +82,7 @@ Searcher *getNewSearcher(Searcher::CoreSearchType type, Executor &executor) {
   case Searcher::DFS: searcher = new DFSSearcher(); break;
   case Searcher::BFS: searcher = new BFSSearcher(); break;
   case Searcher::RandomState: searcher = new RandomSearcher(); break;
-  case Searcher::RandomPath: 
-    if(useDistSolver){
-      searcher = new ConcurrentRandomPathSearcher(executor);
-    } else {
-      searcher = new RandomPathSearcher(executor);
-    }
-    break;
+  case Searcher::RandomPath: assert(!useDistSolver); searcher = new RandomPathSearcher(executor); break;
   case Searcher::ConcurrentRandomPath: searcher = new ConcurrentRandomPathSearcher(executor); break;
   case Searcher::NURS_CovNew: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::CoveringNew); break;
   case Searcher::NURS_MD2U: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::MinDistToUncovered); break;
@@ -109,6 +103,14 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
     CoreSearch.push_back(Searcher::NURS_CovNew);
   }
 
+  if(useDistSolver){
+    for (unsigned i=0; i<CoreSearch.size(); i++){
+      if(CoreSearch[i] == Searcher::RandomPath){
+        CoreSearch[i] = Searcher::ConcurrentRandomPath;
+      }
+    }
+  }
+  
   Searcher *searcher = getNewSearcher(CoreSearch[0], executor);
   
   if (CoreSearch.size() > 1) {
@@ -135,7 +137,7 @@ Searcher *klee::constructUserSearcher(Executor &executor) {
   
   /*
    *  The use of merging or iterative deepening searchers in a concurrent 
-   *  setting has not been investigated, and is future work.
+   *  setting has not been investigated.
    */  
   if(!useDistSolver && !hasConcurrentRandomPath && !hasConcurrentBatching){
     /*  test/Features/Searchers.c completes successfully when merging searchers 

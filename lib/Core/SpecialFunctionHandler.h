@@ -101,6 +101,7 @@ namespace klee {
 		                              CurrentInstructionContext& instrCtx, \
                                 KInstruction *target, \
                                 std::vector< ref<Expr> > &arguments)
+
     HANDLER(handleAbort);
     HANDLER(handleAssert);
     HANDLER(handleAssertFail);

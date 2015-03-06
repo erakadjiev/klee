@@ -484,38 +484,6 @@ MergingSearcher::~MergingSearcher() {
   delete baseSearcher;
 }
 
-///
-
-StateRemovingSearcher::StateRemovingSearcher(Searcher* _baseSearcher)
-  : baseSearcher(_baseSearcher) { }
-
-StateRemovingSearcher::~StateRemovingSearcher() {
-  delete baseSearcher;
-}
-
-ExecutionState &StateRemovingSearcher::selectState(CurrentInstructionContext& instrCtx) {
-  ExecutionState& s = baseSearcher->selectState(instrCtx);
-  baseSearcher->removeState(&s);
-  return s;
-}
-
-void StateRemovingSearcher::update(ExecutionState *current,
-                              const std::set<ExecutionState*> &addedStates,
-                              const std::set<ExecutionState*> &removedStates) {
-  baseSearcher->addState(current);
-  baseSearcher->update(current, addedStates, removedStates);
-}
-
-void StateRemovingSearcher::addState(ExecutionState *es){
-  baseSearcher->addState(es);
-}
-
-void StateRemovingSearcher::removeState(ExecutionState *es){
-  baseSearcher->removeState(es);
-}
-
-///
-
 Instruction *MergingSearcher::getMergePoint(ExecutionState &es) {
   if (mergeFunction) {
     Instruction *i = es.pc->inst;
@@ -822,6 +790,36 @@ void IterativeDeepeningTimeSearcher::addState(ExecutionState *es){
 }
 
 void IterativeDeepeningTimeSearcher::removeState(ExecutionState *es){
+  baseSearcher->removeState(es);
+}
+
+/***/
+
+StateRemovingSearcher::StateRemovingSearcher(Searcher* _baseSearcher)
+  : baseSearcher(_baseSearcher) { }
+
+StateRemovingSearcher::~StateRemovingSearcher() {
+  delete baseSearcher;
+}
+
+ExecutionState &StateRemovingSearcher::selectState(CurrentInstructionContext& instrCtx) {
+  ExecutionState& s = baseSearcher->selectState(instrCtx);
+  baseSearcher->removeState(&s);
+  return s;
+}
+
+void StateRemovingSearcher::update(ExecutionState *current,
+                              const std::set<ExecutionState*> &addedStates,
+                              const std::set<ExecutionState*> &removedStates) {
+  baseSearcher->addState(current);
+  baseSearcher->update(current, addedStates, removedStates);
+}
+
+void StateRemovingSearcher::addState(ExecutionState *es){
+  baseSearcher->addState(es);
+}
+
+void StateRemovingSearcher::removeState(ExecutionState *es){
   baseSearcher->removeState(es);
 }
 

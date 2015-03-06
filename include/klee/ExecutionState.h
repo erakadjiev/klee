@@ -67,9 +67,8 @@ public:
 
 private:
   // unsupported, use copy constructor
-  ExecutionState &operator=(const ExecutionState&);
+  ExecutionState &operator=(const ExecutionState&); 
   std::map< std::string, std::string > fnAliases;
-
 
 public:
   bool fakeState;

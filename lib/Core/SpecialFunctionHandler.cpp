@@ -277,7 +277,7 @@ void SpecialFunctionHandler::handleSilentExit(ExecutionState &state,
 }
 
 void SpecialFunctionHandler::handleAliasFunction(ExecutionState &state,
-       CurrentInstructionContext& instrCtx,
+						 CurrentInstructionContext& instrCtx,
 						 KInstruction *target,
 						 std::vector<ref<Expr> > &arguments) {
   assert(arguments.size()==2 && 
