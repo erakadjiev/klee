@@ -297,7 +297,8 @@ Executor::Executor(const InterpreterOptions &opts,
     ivcEnabled(false),
     coreSolverTimeout(MaxCoreSolverTime != 0 && MaxInstructionTime != 0
       ? std::min(MaxCoreSolverTime,MaxInstructionTime)
-      : std::max(MaxCoreSolverTime,MaxInstructionTime)) {
+      : std::max(MaxCoreSolverTime,MaxInstructionTime)),
+    runningFibers(0) {
       
   if (coreSolverTimeout) UseForkedCoreSolver = true;
   
@@ -339,7 +340,6 @@ Executor::Executor(const InterpreterOptions &opts,
   }
 #endif /* SUPPORT_METASMT */
   
-   
   Solver *solver = 
     constructSolverChain(coreSolver,
                          interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
@@ -2536,7 +2536,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
   // optimization and such.
   initTimers();
 
-  int runningFibers = 0;
+  assert(runningFibers == 0);
 //  const int maxFibers = 1000;
 //  const int maxFibers = (MaxForks != ~0u) ? MaxForks-1 : 10000;run
 
@@ -2665,7 +2665,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
 
           executeInstruction(state, instrCtx, ki);
           processTimers(&state, instrCtx, MaxInstructionTime);
-          checkMaxMemory(state, instrCtx, runningFibers);
+          checkMaxMemory(state, instrCtx);
           
           updateStates(&state, instrCtx);
         }
@@ -2806,7 +2806,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
       executeInstruction(state, instrCtx, ki);
       processTimers(&state, instrCtx, MaxInstructionTime);
 
-      checkMaxMemory(state, instrCtx, 1);
+      checkMaxMemory(state, instrCtx);
 
       updateStates(&state, instrCtx);
 //      --runningFibers;
@@ -2821,7 +2821,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
   dumpStatesIfRequired(tmp);
 }
 
-void Executor::checkMaxMemory(ExecutionState& current, CurrentInstructionContext& instrCtx, int runningFibers){
+void Executor::checkMaxMemory(ExecutionState& current, CurrentInstructionContext& instrCtx){
   if (MaxMemory) {
     if ((stats::instructions & 0xFFFF) == 0) {
       // We need to avoid calling GetMallocUsage() often because it
@@ -2874,7 +2874,12 @@ void Executor::dumpStatesIfRequired(CurrentInstructionContext& instrCtx){
   if (DumpStatesOnHalt && !states.empty()) {
     llvm::errs() << "KLEE: halting execution, dumping remaining states\n";
 
-    int runningFibers = 0;
+    // wait for all running fibers to finish their current instruction
+    while(runningFibers > 0){
+      static_cast<DistributedSolver*>(coreSolver)->waitForResponse();
+    }
+    
+    assert(runningFibers == 0);
     while(!states.empty()){
       if(!runningFibers){
         ++runningFibers;

@@ -184,6 +184,11 @@ private:
   /// (e.g. for a single STP query)
   double coreSolverTimeout; 
 
+  /// The number of worker fibers running at a given point in time. 
+  /// The main fiber is not included here. 
+  /// Only used if KLEE ran with --use-dist-solver.
+  int runningFibers;
+  
   llvm::Function* getTargetFunction(llvm::Value *calledVal,
                                     ExecutionState &state);
   
@@ -199,7 +204,7 @@ private:
   void runInFiber(ExecutionState &initialState);
 
   void checkMaxMemory(ExecutionState &current, 
-      CurrentInstructionContext& instrCtx, int runningFibers);
+      CurrentInstructionContext& instrCtx);
   void dumpStatesIfRequired(CurrentInstructionContext& instrCtx);
 
   // Given a concrete object in our [klee's] address space, add it to 
