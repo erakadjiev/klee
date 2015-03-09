@@ -281,6 +281,7 @@ namespace klee {
         while((readBytes = read(c2pPipe[0], buf, sizeof(buf)-1)) > 0){
           ans.append(buf, readBytes);
         }
+        close(c2pPipe[0]);
         return ans;
       } else {
 //        return SolverImpl::SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE;
