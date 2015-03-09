@@ -135,6 +135,9 @@ namespace klee {
     assert(service);
     assert(service_poller);
 
+    // CZMQ overrides KLEE's signal handler
+    zsys_handler_reset();
+    
     findAndSetSolverBackends();
   }
 
