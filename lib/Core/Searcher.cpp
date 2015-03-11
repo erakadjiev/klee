@@ -368,9 +368,15 @@ ExecutionState &ConcurrentRandomPathSearcher::selectState(CurrentInstructionCont
 void ConcurrentRandomPathSearcher::update(ExecutionState *current,
                                 const std::set<ExecutionState*> &addedStates,
                                 const std::set<ExecutionState*> &removedStates) {
-  addState(current);
-  addStates(addedStates);
-  removeStates(removedStates);
+  executor.processTree->setBeingExecuted(current->ptreeNode, false);
+  for (std::set<ExecutionState*>::const_iterator it = addedStates.begin(),
+      ie = addedStates.end(); it != ie; ++it) {
+    executor.processTree->setBeingExecuted((*it)->ptreeNode, false);
+  }
+  for (std::set<ExecutionState*>::const_iterator it = removedStates.begin(),
+      ie = removedStates.end(); it != ie; ++it) {
+    executor.processTree->setBeingExecuted((*it)->ptreeNode, true);
+  }
 }
 
 bool ConcurrentRandomPathSearcher::empty() {
@@ -378,12 +384,11 @@ bool ConcurrentRandomPathSearcher::empty() {
   return !root || executor.processTree->isBeingExecuted(root); 
 }
 
+// we leave those empty, so that the StateRemovingSearcher doesn't add redundant PTree calls
 void ConcurrentRandomPathSearcher::addState(ExecutionState *es){
-  executor.processTree->setBeingExecuted(es->ptreeNode, false);
 }
 
 void ConcurrentRandomPathSearcher::removeState(ExecutionState *es){
-  executor.processTree->setBeingExecuted(es->ptreeNode, true);
 }
 
 ///
