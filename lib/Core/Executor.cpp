@@ -2552,8 +2552,8 @@ void Executor::runInFiber(ExecutionState &initialState) {
     CurrentInstructionContext instrCtx;
     int lastNumSeeds = usingSeeds->size()+10;
     double lastTime, startTime = lastTime = util::getWallTime();
-    while (!seedMap.empty() && !haltExecution) {
-      if(!runningFibers){
+    while ((!seedMap.empty() && !haltExecution) || runningFibers > 0) {
+      if(!runningFibers && !haltExecution){
         ++runningFibers;
         boost::fibers::fiber(std::allocator_arg, boost::fibers::segmented_stack(), [&] () {
           
@@ -2603,14 +2603,17 @@ void Executor::runInFiber(ExecutionState &initialState) {
         } ).detach();
       } else {
         //      std::cout << "Searcher empty\n";
+        assert(runningFibers > 0);
         static_cast<DistributedSolver*>(coreSolver)->waitForResponse();
       }
       boost::this_fiber::yield();
 
     }
 
+    assert(runningFibers == 0);
+    
     if (haltExecution){
-      dumpStatesIfRequired(instrCtx);
+      dumpStatesIfRequired();
       return;
     }
     
@@ -2625,7 +2628,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
     }
 
     if (OnlySeed){
-      dumpStatesIfRequired(instrCtx);
+      dumpStatesIfRequired();
       return;
     }
   }
@@ -2634,7 +2637,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
 
   searcher->addStates(states);
 
-  while (!states.empty() && !haltExecution) {
+  while ((!states.empty() && !haltExecution) || runningFibers > 0) {
 ////    std::cout << "Main loop beginning\n";
 ////    while((searcher->empty() || runningFibers >= maxFibers) && !haltExecution){
 //    while(searcher->empty() && !haltExecution){
@@ -2651,7 +2654,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
 //      break;
 //    }
     
-    if(!searcher->empty()){
+    if(!searcher->empty() && !haltExecution){
       ++runningFibers;
       boost::fibers::fiber(std::allocator_arg, boost::fibers::segmented_stack(), [&] () {
   
@@ -2682,11 +2685,12 @@ void Executor::runInFiber(ExecutionState &initialState) {
     boost::this_fiber::yield();
   }
 
+  assert(runningFibers == 0);
+  
   delete searcher;
   searcher = 0;
 
-  CurrentInstructionContext tmp;
-  dumpStatesIfRequired(tmp);
+  dumpStatesIfRequired();
 }
 
 void Executor::runOrigTest(ExecutionState &initialState) {
@@ -2716,7 +2720,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
     CurrentInstructionContext instrCtx;
     while (!seedMap.empty()) {
       if (haltExecution){
-        dumpStatesIfRequired(instrCtx);
+        dumpStatesIfRequired();
         return;
       }
 
@@ -2768,7 +2772,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
     }
 
     if (OnlySeed){
-      dumpStatesIfRequired(instrCtx);
+      dumpStatesIfRequired();
       return;
     }
   }
@@ -2817,8 +2821,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
   delete searcher;
   searcher = 0;
 
-  CurrentInstructionContext tmp;
-  dumpStatesIfRequired(tmp);
+  dumpStatesIfRequired();
 }
 
 void Executor::checkMaxMemory(ExecutionState& current, CurrentInstructionContext& instrCtx){
@@ -2870,15 +2873,10 @@ void Executor::checkMaxMemory(ExecutionState& current, CurrentInstructionContext
   }
 }
 
-void Executor::dumpStatesIfRequired(CurrentInstructionContext& instrCtx){
+void Executor::dumpStatesIfRequired(){
   if (DumpStatesOnHalt && !states.empty()) {
     llvm::errs() << "KLEE: halting execution, dumping remaining states\n";
 
-    // wait for all running fibers to finish their current instruction
-    while(runningFibers > 0){
-      static_cast<DistributedSolver*>(coreSolver)->waitForResponse();
-    }
-    
     assert(runningFibers == 0);
     while(!states.empty()){
       if(!runningFibers){

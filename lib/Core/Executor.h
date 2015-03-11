@@ -205,7 +205,7 @@ private:
 
   void checkMaxMemory(ExecutionState &current, 
       CurrentInstructionContext& instrCtx);
-  void dumpStatesIfRequired(CurrentInstructionContext& instrCtx);
+  void dumpStatesIfRequired();
 
   // Given a concrete object in our [klee's] address space, add it to 
   // objects checked code can reference.
