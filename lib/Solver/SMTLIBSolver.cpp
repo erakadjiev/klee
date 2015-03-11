@@ -21,6 +21,7 @@
 
 //remove me
 #include <iostream>
+//#include <fstream>
 
 #include <errno.h>
 
@@ -33,6 +34,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+//#include <signal.h>
 
 using namespace std;
 namespace klee {
@@ -47,6 +49,10 @@ namespace klee {
       std::string solverPath;
       bool IgnoreSolverFailures;
 
+      long double avg;
+      int cnt;
+      int max;
+      
       ExprSMTLIBPrinter* printer;
 
       void giveUp();
@@ -110,6 +116,7 @@ namespace klee {
   }
 
   SMTLIBSolverImpl::~SMTLIBSolverImpl() {
+    std::cerr << "Cnt: " << cnt << ", Avg: " << avg << ", Max: " << max << "\n";
     delete printer;
   }
 
@@ -206,90 +213,111 @@ namespace klee {
 
     return parseSolverOutput(queryResult, objects, values, hasSolution);
   }
-
+  
+//  static void smtTimeoutHandler(int x) {
+//    _exit(52);
+//  }
+  
   std::string SMTLIBSolverImpl::sendQuery(std::string query){
     fflush(stdout);
     fflush(stderr);
-
+    
     int p2cPipe[2];
     int c2pPipe[2];
-
+    
     if(
         pipe(p2cPipe) ||
         pipe(c2pPipe)){
       std::cerr << "Failed to pipe\n";
       return "";
     }
-
+    
     pid_t pid = fork();
     if (pid > 0) {
       // parent
       close(p2cPipe[0]);
       close(c2pPipe[1]);
-
-      write(p2cPipe[1], query.c_str(), query.length()+1);
+      
+      int query_length = query.length();
+      
+      ++cnt;
+      avg = (query_length + ((cnt-1) * avg)) / cnt;
+      if(query_length > max){
+        max = query_length;
+      }
+      
+      ++query_length;
+      
+      int bytes_written = write(p2cPipe[1], query.c_str(), query_length);
       close(p2cPipe[1]);
-
-      int status;
-      pid_t res;
-
-      do {
+      
+      if(bytes_written != query_length){
+        std::cerr << "Failed to write to child's pipe\n";
+        std::cerr << "Wrote: " << bytes_written << " bytes, instead of " << query_length << "\n";
+        return "";
+      }
+      
+      std::string ans;
+      int readBytes = 1;
+      char buf[4096];
+      
+      while((readBytes = read(c2pPipe[0], buf, sizeof(buf)-1)) > 0){
+        ans.append(buf, readBytes);
+      }
+      close(c2pPipe[0]);
+      
+      int status = 0;
+      pid_t res = 0;
+      do{
         res = waitpid(pid, &status, 0);
       } while (res < 0 && errno == EINTR);
-
+      
       if (res < 0) {
         fprintf(stderr, "ERROR: waitpid() for STP failed");
         if (!IgnoreSolverFailures)
           exit(1);
-//        return SolverImpl::SOLVER_RUN_STATUS_WAITPID_FAILED;
+        //        return SolverImpl::SOLVER_RUN_STATUS_WAITPID_FAILED;
         return "";
       }
-
+      
       if (WIFSIGNALED(status) || !WIFEXITED(status)) {
         fprintf(stderr, "ERROR: STP did not return successfully.  Most likely you forgot to run 'ulimit -s unlimited'\n");
+        std::cerr << "Exit status: " << status << "\n";
+        //std::cerr << "Query was: \n" << query << "\n";
+        std::cerr << "Child wrote this to the pipe: \n" << ans << "\n";
         if (!IgnoreSolverFailures)  {
           exit(1);
         }
-//        return SolverImpl::SOLVER_RUN_STATUS_INTERRUPTED;
+        //        return SolverImpl::SOLVER_RUN_STATUS_INTERRUPTED;
         return "";
       }
-
-      bool hasSolution;
+      
       int exitcode = WEXITSTATUS(status);
       if (exitcode==0) {
-        hasSolution = true;
+        return ans;
       } else if (exitcode==1) {
-        hasSolution = false;
+        return ans;
       } else if (exitcode==52) {
         fprintf(stderr, "error: STP timed out");
+        //        std::cerr << "Query was: \n" << query  << "\n";
         // mark that a timeout occurred
-//        return SolverImpl::SOLVER_RUN_STATUS_TIMEOUT;
+        //        return SolverImpl::SOLVER_RUN_STATUS_TIMEOUT;
         return "";
       } else {
         fprintf(stderr, "error: STP did not return a recognized code");
         if (!IgnoreSolverFailures)
           exit(1);
-//        return SolverImpl::SOLVER_RUN_STATUS_UNEXPECTED_EXIT_CODE;
-        return "";
-      }
-
-      if (hasSolution) {
-        std::string ans;
-        int readBytes = 1;
-        char buf[100];
-
-        while((readBytes = read(c2pPipe[0], buf, sizeof(buf)-1)) > 0){
-          ans.append(buf, readBytes);
-        }
-        close(c2pPipe[0]);
-        return ans;
-      } else {
-//        return SolverImpl::SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE;
+        //        return SolverImpl::SOLVER_RUN_STATUS_UNEXPECTED_EXIT_CODE;
         return "";
       }
     }
     else if (pid == 0) {
       // child
+      //      if (timeout) {      
+      //        alarm(0); /* Turn off alarm so we can safely set signal handler */
+      //        signal(SIGALRM, stpTimeoutHandler);
+      //        alarm(std::max(1, (int)timeout));
+      //      }
       if(
           dup2(p2cPipe[0], STDIN_FILENO) == -1 ||
           dup2(c2pPipe[1], STDOUT_FILENO) == -1 ||
@@ -301,7 +329,7 @@ namespace klee {
       close(p2cPipe[1]);
       close(c2pPipe[0]);
       close(c2pPipe[1]);
-
+      
       int ret = execl(solverPath.c_str(), solverPath.c_str(), (char*)NULL);
       exit(ret);
     }
@@ -311,6 +339,87 @@ namespace klee {
     }
   }
 
+// Communicate via files
+//
+//  std::string SMTLIBSolverImpl::sendQuery(std::string query){
+//    fflush(stdout);
+//    fflush(stderr);
+//
+//    pid_t pid = fork();
+//    if (pid > 0) {
+//      // parent
+//
+//      int status;
+//      pid_t res;
+//      res = waitpid(pid, &status, 0);
+//
+//      if (res < 0) {
+//        fprintf(stderr, "ERROR: waitpid() for STP failed");
+//        if (!IgnoreSolverFailures)
+//          exit(1);
+////        return SolverImpl::SOLVER_RUN_STATUS_WAITPID_FAILED;
+//        return "";
+//      }
+//      
+//      std::string ans = "";
+//      
+//      if (WIFSIGNALED(status) || !WIFEXITED(status)) {
+//        fprintf(stderr, "ERROR: STP did not return successfully.  Most likely you forgot to run 'ulimit -s unlimited'\n");
+//        std::cerr << "Exit status: " << status << "\n";
+////std::cerr << "Query was: \n" << query << "\n";
+//        std::cerr << "Child wrote this to the pipe: \n" << ans << "\n";
+//        if (!IgnoreSolverFailures)  {
+//          exit(1);
+//        }
+////        return SolverImpl::SOLVER_RUN_STATUS_INTERRUPTED;
+//        return "";
+//      }
+//      
+//      int exitcode = WEXITSTATUS(status);
+//      if (exitcode==0) {
+//        return ans;
+//      } else if (exitcode==1) {
+//     return ans;
+//      } else if (exitcode==52) {
+//        fprintf(stderr, "error: STP timed out");
+////        std::cerr << "Query was: \n" << query  << "\n";
+//        // mark that a timeout occurred
+////        return SolverImpl::SOLVER_RUN_STATUS_TIMEOUT;
+//        return "";
+//      } else {
+//        fprintf(stderr, "error: STP did not return a recognized code");
+//        if (!IgnoreSolverFailures)
+//          exit(1);
+////        return SolverImpl::SOLVER_RUN_STATUS_UNEXPECTED_EXIT_CODE;
+//        return "";
+//      }
+//    }
+//    else if (pid == 0) {
+//      // child
+////      if (timeout) {      
+////        alarm(0); /* Turn off alarm so we can safely set signal handler */
+////        signal(SIGALRM, stpTimeoutHandler);
+////        alarm(std::max(1, (int)timeout));
+////      }
+//     
+//     std::ofstream in_file("/tmp/in.smt2");
+//     in_file << query;
+//     in_file.close();
+//     
+// if(freopen("/tmp/out.smt2", "w", stdout)==NULL) {
+//  klee_error("SMTLIBSolverImpl (Child): Child failed to redirect stdout.");
+//  exit(53);
+// }
+//
+//      int ret = execl(solverPath.c_str(), solverPath.c_str(), "/tmp/in.smt2", (char*)NULL);
+//      exit(ret);
+//    }
+//    else {
+//      std::cerr << "Failed to fork!\n";
+//      return "";
+//    }
+//  }
+  
   SolverImpl::SolverRunStatus SMTLIBSolverImpl::parseSolverOutput(const std::string& solverOutput,
       const std::vector<const Array*>& objects,
       std::vector<std::vector<unsigned char> >& values,
@@ -321,6 +430,9 @@ namespace klee {
 
     lexer.setInput(iss);
 
+//   std::ifstream out_file("/tmp/out.smt2");
+//   lexer.setInput(out_file);
+    
     SMTLIBOutputLexer::Token t = SMTLIBOutputLexer::UNRECOGNISED_TOKEN;
 
     /* The first thing we want to check is if the solver thought the
@@ -344,7 +456,7 @@ namespace klee {
         break;
       default:
         cerr << "SMTLIBSolverImpl : Unexpected token `"
-        << lexer.getLastTokenContents() << "`" << endl;
+        << lexer.getLastTokenContents() << "` in query:\n" << solverOutput << endl;
         giveUp();
         return SOLVER_RUN_STATUS_FAILURE;
     }
