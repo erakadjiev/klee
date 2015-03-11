@@ -319,7 +319,7 @@ namespace klee {
 
   void DistributedSolverImpl::waitForResponse(){
     while (!(zsock_events(service) & ZMQ_POLLIN)){
-      void* ret = zpoller_wait(service_poller, -1);
+      void* ret = zpoller_wait(service_poller, 500);
       if(ret == NULL){
         if(zpoller_terminated(service_poller)){
           std::cout << "Service poller terminated\n";
