@@ -38,6 +38,9 @@
 #include <sstream>
 #include <vector>
 
+//remove
+#include <iostream>
+
 using namespace klee;
 
 namespace {
@@ -84,10 +87,17 @@ STPBuilder::STPBuilder(::VC _vc, bool _optimizeDivides)
   tempVars[1] = buildVar("__tmpInt16", 16);
   tempVars[2] = buildVar("__tmpInt32", 32);
   tempVars[3] = buildVar("__tmpInt64", 64);
+  constants = 0;
+  notConstants = 0;
+  cacheHits = 0;
+  currentConstructs = 0;
+  avg = 0;
+  max = 0;
 }
 
 STPBuilder::~STPBuilder() {
-  
+  std::cout << "Constants: " << constants << ", NotConstants: " << notConstants << ", CacheHits: " << cacheHits << "\n";
+  std::cout << "Avg cache hit size: " << avg << ", Max: " << max << "\n";
 }
 
 ///
@@ -490,24 +500,33 @@ ExprHandle STPBuilder::getInitialRead(const Array *root, unsigned index) {
     otherwise it is a bool */
 ExprHandle STPBuilder::construct(ref<Expr> e, int *width_out) {
   if (!UseConstructHash || isa<ConstantExpr>(e)) {
+    ++constants;
     return constructActual(e, width_out);
   } else {
+    ++notConstants;
     ExprHashMap< std::pair<ExprHandle, unsigned> >::iterator it = 
       constructed.find(e);
     if (it!=constructed.end()) {
+      ++cacheHits;
       if (width_out)
         *width_out = it->second.second;
+      int cnstrs = it->second.first.constructs;
+      if(cnstrs > max){
+        max = cnstrs;
+      }
+      avg = (cnstrs + ((cacheHits-1) * avg)) / cacheHits;
       return it->second.first;
     } else {
+      currentConstructs = 0;
       int width;
       if (!width_out) width_out = &width;
       ExprHandle res = constructActual(e, width_out);
+      res.constructs = currentConstructs;
       constructed.insert(std::make_pair(e, std::make_pair(res, *width_out)));
       return res;
     }
   }
 }
-
 
 /** if *width_out!=1 then result is a bitvector,
     otherwise it is a bool */
@@ -516,6 +535,7 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
   if (!width_out) width_out = &width;
 
   ++stats::queryConstructs;
+  ++currentConstructs;
 
   switch (e->getKind()) {
   case Expr::Constant: {

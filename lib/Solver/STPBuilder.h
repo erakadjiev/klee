@@ -41,6 +41,7 @@ namespace klee {
     ExprHolder *H;
     
   public:
+    int constructs = 0;
     ExprHandle() : H(new ExprHolder(0)) { H->count++; }
     ExprHandle(::VCExpr _expr) : H(new ExprHolder(_expr)) { H->count++; }
     ExprHandle(const ExprHandle &b) : H(b.H) { H->count++; }
@@ -77,6 +78,14 @@ class STPBuilder {
   bool optimizeDivides;
 
   STPArrayExprHash _arr_hash;
+  
+  long constants;
+  long notConstants;
+  long cacheHits;
+  
+  int currentConstructs;
+  long double avg;
+  int max;
 
 private:  
 
