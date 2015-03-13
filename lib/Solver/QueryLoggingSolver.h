@@ -38,8 +38,6 @@ protected:
                            // if this param is negative, log only those queries
                            // on which the solver has timed out
 
-    double startTime;
-    double lastQueryTime;
     const std::string queryCommentSign; // sign representing commented lines
                                         // in given a query format
 
@@ -47,11 +45,11 @@ protected:
                             const Query* falseQuery = 0,
                             const std::vector<const Array*>* objects = 0);
            
-    virtual void finishQuery(bool success);        
+    virtual void finishQuery(bool success, double elapsedTime);        
   
     /// flushBuffer - flushes the temporary logs buffer. Depending on threshold
     /// settings, contents of the buffer are either discarded or written to a file.  
-    void flushBuffer(void);
+    void flushBuffer(double elapsedTime);
     
     virtual void printQuery(const Query& query,
                             const Query* falseQuery = 0,
