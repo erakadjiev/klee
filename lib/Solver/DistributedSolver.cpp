@@ -45,7 +45,20 @@ namespace SMTLIBSolverOpts {
 
 namespace klee {
   class DistributedSolverImpl: public SolverImpl {
+    public:
+      class SolverReply{
+        public:
+        SolverReply() : status(0), reply(nullptr){}
+        SolverReply(int status, char* reply) : status(0), reply(reply){}
+        bool isEmpty(){
+          return (!status && !reply);
+        }
+        int status;
+        char* reply;
+      };
+
     private:
+
       SMTLIBOutputLexer lexer;
 
       double timeout;
@@ -59,7 +72,7 @@ namespace klee {
       zpoller_t* service_poller;
       zhashx_t* solvers;
 
-      std::unordered_map<unsigned int, boost::fibers::promise<std::string>> pendingQueries;
+      std::unordered_map<unsigned int, boost::fibers::promise<SolverReply>> pendingQueries;
 
       unsigned int reqId;
       const unsigned int maxId = UINT_MAX-1;
@@ -72,12 +85,12 @@ namespace klee {
           const std::vector<const Array*>& arrays);
       std::string buildSMTLIBv2String(const Query& q);
       int generateRequestId();
-      std::string sendQuery(std::string query);
+      SolverReply sendQuery(std::string query);
       virtual SolverImpl::SolverRunStatus solveRemotely(const Query& q,
           const std::vector<const Array*>& objects,
           std::vector<std::vector<unsigned char> >& values,
           bool& hasSolution);
-      SolverImpl::SolverRunStatus parseSolverOutput(const std::string& solverOutput,
+      SolverImpl::SolverRunStatus parseSolverOutput(char* solverOutput,
           const std::vector<const Array*>& objects,
           std::vector<std::vector<unsigned char> >& values,
           bool& hasSolution);
@@ -253,9 +266,27 @@ namespace klee {
 
     std::string smtLibQuery = buildSMTLIBv2String(query, objects);
 
-    std::string queryResult = sendQuery(smtLibQuery);
+    SolverReply queryResult = sendQuery(smtLibQuery);
 
-    return parseSolverOutput(queryResult, objects, values, hasSolution);
+    int status = queryResult.status; 
+    SolverImpl::SolverRunStatus ret;
+    if(status == 0){
+      assert(queryResult.reply);
+      ret = parseSolverOutput(queryResult.reply, objects, values, hasSolution);
+    } else if (status == 1){
+      ret = SolverImpl::SolverRunStatus::SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE;
+    } else if (status == 2){
+      ret = SolverImpl::SolverRunStatus::SOLVER_RUN_STATUS_TIMEOUT;
+    } else {
+      ret = SolverImpl::SolverRunStatus::SOLVER_RUN_STATUS_FAILURE;
+    }
+    /*
+     * would be nice to have this automatically in the destructor of SolverReply,
+     * but Boost Fiber (in future.get() via Boost Optional) makes a copy of the object,
+     * thus the memory would be freed earlier than we need
+     */  
+    zstr_free(&queryResult.reply);
+    return ret;
   }
 
   int DistributedSolverImpl::generateRequestId(){
@@ -265,7 +296,7 @@ namespace klee {
     return reqId;
   }
 
-  std::string DistributedSolverImpl::sendQuery(std::string query){
+  DistributedSolverImpl::SolverReply DistributedSolverImpl::sendQuery(std::string query){
     // std::cout << id << " starts\n";
     // std::cout << "Sending SMT query to sock\n";
     int req_id = generateRequestId();
@@ -274,47 +305,54 @@ namespace klee {
     assert(rc == 0);
 //    std::cout << boost::fibers::detail::scheduler::instance()->active()->get_id() << " sent query\n";
     
-    std::string solution;
     bool gotOwnResponse = false;
+    SolverReply solver_reply;
     while (zsock_events(service) & ZMQ_POLLIN) {
       zmsg_t* msg = zmsg_recv(service);
       char* response_id = zmsg_popstr(msg);
-      char* response = zmsg_popstr(msg);
+      char* response_status = zmsg_popstr(msg);
+
+      int resp_id = std::stoi(response_id);
+      int resp_status = std::stoi(response_status);
+
+      char* response = nullptr;
+      if(resp_status == 0){
+        response = zmsg_popstr(msg);
+      }
+      solver_reply = SolverReply(resp_status, response);
+
+      zstr_free(&response_id);
+      zstr_free(&response_status);
       zmsg_destroy(&msg);
       //          std::cout << boost::fibers::detail::scheduler::instance()->active()->get_id() << " received reply\n";
       
-      int resp_id = std::stoi(response_id);
-
       if(req_id == resp_id){
         gotOwnResponse = true;
-        solution = response;
+        std::cout << "Got own response immediately\n";
       } else {
         auto elem = pendingQueries.find(resp_id);
         
         if (elem == pendingQueries.end()){
           std::cout << "Promise not found\n";
         } else {
-          elem->second.set_value(std::string(response));
+          elem->second.set_value(solver_reply);
         }
       }
-
-      zstr_free(&response_id);
-      zstr_free(&response);
     }
 
     if(!gotOwnResponse){
-      boost::fibers::promise<std::string> p;
-      boost::fibers::future<std::string> f = p.get_future();
+      boost::fibers::promise<SolverReply> p;
+      boost::fibers::future<SolverReply> f = p.get_future();
       pendingQueries.insert(std::make_pair(req_id, std::move(p)));
   
-      solution = f.get();
+      solver_reply = f.get();
       pendingQueries.erase(req_id);
     }
     
-    if (solution.empty()){
+    if (solver_reply.isEmpty()){
       std::cerr << "Received \"null\" response from server\n";
     }
-    return solution;
+    return solver_reply;
   }
 
   void DistributedSolverImpl::waitForResponse(){
@@ -323,8 +361,6 @@ namespace klee {
       if(ret == NULL){
         if(zpoller_terminated(service_poller)){
           std::cout << "Service poller terminated\n";
-        } else if (zpoller_expired(service_poller)){
-          std::cout << "Service poller expired\n";
         } else {
           std::cout << "Service poller failed (unknown reason)\n";
         }
@@ -334,23 +370,32 @@ namespace klee {
     while (zsock_events(service) & ZMQ_POLLIN) {
       zmsg_t* msg = zmsg_recv(service);
       char* response_id = zmsg_popstr(msg);
-      char* response = zmsg_popstr(msg);
+      char* response_status = zmsg_popstr(msg);
+
+      int resp_id = std::stoi(response_id);
+      int resp_status = std::stoi(response_status);
+
+      char* response = nullptr;
+      if(resp_status == 0){
+        response = zmsg_popstr(msg);
+      }
+      SolverReply solver_reply(resp_status, response);
+
+      zstr_free(&response_id);
+      zstr_free(&response_status);
       zmsg_destroy(&msg);
       
-      auto elem = pendingQueries.find(std::stoi(response_id));
+      auto elem = pendingQueries.find(resp_id);
       
       if (elem == pendingQueries.end()){
         std::cout << "Promise not found\n";
       } else {
-        elem->second.set_value(std::string(response));
+        elem->second.set_value(solver_reply);
       }
-      
-      zstr_free(&response_id);
-      zstr_free(&response);
     }
   }
   
-  SolverImpl::SolverRunStatus DistributedSolverImpl::parseSolverOutput(const std::string& solverOutput,
+  SolverImpl::SolverRunStatus DistributedSolverImpl::parseSolverOutput(char* solverOutput,
       const std::vector<const Array*>& objects,
       std::vector<std::vector<unsigned char> >& values,
       bool& hasSolution){
