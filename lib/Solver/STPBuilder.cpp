@@ -90,7 +90,6 @@ STPBuilder::STPBuilder(::VC _vc, bool _optimizeDivides)
   constants = 0;
   notConstants = 0;
   cacheHits = 0;
-  currentConstructs = 0;
   avg = 0;
   max = 0;
 }
@@ -499,9 +498,16 @@ ExprHandle STPBuilder::getInitialRead(const Array *root, unsigned index) {
 /** if *width_out!=1 then result is a bitvector,
     otherwise it is a bool */
 ExprHandle STPBuilder::construct(ref<Expr> e, int *width_out) {
+  int cnt = 0;
+  return construct(cnt, e, width_out);
+}
+
+ExprHandle STPBuilder::construct(int& count, ref<Expr> e, int *width_out) {
   if (!UseConstructHash || isa<ConstantExpr>(e)) {
     ++constants;
-    return constructActual(e, width_out);
+    ExprHandle res = constructActual(count, e, width_out);
+    res.constructs = count;
+    return res;
   } else {
     ++notConstants;
     ExprHashMap< std::pair<ExprHandle, unsigned> >::iterator it = 
@@ -517,11 +523,10 @@ ExprHandle STPBuilder::construct(ref<Expr> e, int *width_out) {
       avg = (cnstrs + ((cacheHits-1) * avg)) / cacheHits;
       return it->second.first;
     } else {
-      currentConstructs = 0;
       int width;
       if (!width_out) width_out = &width;
-      ExprHandle res = constructActual(e, width_out);
-      res.constructs = currentConstructs;
+      ExprHandle res = constructActual(count, e, width_out);
+      res.constructs = count;
       constructed.insert(std::make_pair(e, std::make_pair(res, *width_out)));
       return res;
     }
@@ -530,12 +535,12 @@ ExprHandle STPBuilder::construct(ref<Expr> e, int *width_out) {
 
 /** if *width_out!=1 then result is a bitvector,
     otherwise it is a bool */
-ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
+ExprHandle STPBuilder::constructActual(int& count, ref<Expr> e, int *width_out) {
   int width;
   if (!width_out) width_out = &width;
 
   ++stats::queryConstructs;
-  ++currentConstructs;
+  ++count;
 
   switch (e->getKind()) {
   case Expr::Constant: {
@@ -567,7 +572,7 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
   // Special
   case Expr::NotOptimized: {
     NotOptimizedExpr *noe = cast<NotOptimizedExpr>(e);
-    return construct(noe->src, width_out);
+    return construct(count, noe->src, width_out);
   }
 
   case Expr::Read: {
@@ -576,23 +581,23 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
     *width_out = re->updates.root->getRange();
     return vc_readExpr(vc,
                        getArrayForUpdate(re->updates.root, re->updates.head),
-                       construct(re->index, 0));
+                       construct(count, re->index, 0));
   }
     
   case Expr::Select: {
     SelectExpr *se = cast<SelectExpr>(e);
-    ExprHandle cond = construct(se->cond, 0);
-    ExprHandle tExpr = construct(se->trueExpr, width_out);
-    ExprHandle fExpr = construct(se->falseExpr, width_out);
+    ExprHandle cond = construct(count, se->cond, 0);
+    ExprHandle tExpr = construct(count, se->trueExpr, width_out);
+    ExprHandle fExpr = construct(count, se->falseExpr, width_out);
     return vc_iteExpr(vc, cond, tExpr, fExpr);
   }
 
   case Expr::Concat: {
     ConcatExpr *ce = cast<ConcatExpr>(e);
     unsigned numKids = ce->getNumKids();
-    ExprHandle res = construct(ce->getKid(numKids-1), 0);
+    ExprHandle res = construct(count, ce->getKid(numKids-1), 0);
     for (int i=numKids-2; i>=0; i--) {
-      res = vc_bvConcatExpr(vc, construct(ce->getKid(i), 0), res);
+      res = vc_bvConcatExpr(vc, construct(count, ce->getKid(i), 0), res);
     }
     *width_out = ce->getWidth();
     return res;
@@ -600,7 +605,7 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Extract: {
     ExtractExpr *ee = cast<ExtractExpr>(e);
-    ExprHandle src = construct(ee->expr, width_out);    
+    ExprHandle src = construct(count, ee->expr, width_out);    
     *width_out = ee->getWidth();
     if (*width_out==1) {
       return bvBoolExtract(src, ee->offset);
@@ -614,7 +619,7 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
   case Expr::ZExt: {
     int srcWidth;
     CastExpr *ce = cast<CastExpr>(e);
-    ExprHandle src = construct(ce->src, &srcWidth);
+    ExprHandle src = construct(count, ce->src, &srcWidth);
     *width_out = ce->getWidth();
     if (srcWidth==1) {
       return vc_iteExpr(vc, src, bvOne(*width_out), bvZero(*width_out));
@@ -626,7 +631,7 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
   case Expr::SExt: {
     int srcWidth;
     CastExpr *ce = cast<CastExpr>(e);
-    ExprHandle src = construct(ce->src, &srcWidth);
+    ExprHandle src = construct(count, ce->src, &srcWidth);
     *width_out = ce->getWidth();
     if (srcWidth==1) {
       return vc_iteExpr(vc, src, bvMinusOne(*width_out), bvZero(*width_out));
@@ -639,23 +644,23 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Add: {
     AddExpr *ae = cast<AddExpr>(e);
-    ExprHandle left = construct(ae->left, width_out);
-    ExprHandle right = construct(ae->right, width_out);
+    ExprHandle left = construct(count, ae->left, width_out);
+    ExprHandle right = construct(count, ae->right, width_out);
     assert(*width_out!=1 && "uncanonicalized add");
     return vc_bvPlusExpr(vc, *width_out, left, right);
   }
 
   case Expr::Sub: {
     SubExpr *se = cast<SubExpr>(e);
-    ExprHandle left = construct(se->left, width_out);
-    ExprHandle right = construct(se->right, width_out);
+    ExprHandle left = construct(count, se->left, width_out);
+    ExprHandle right = construct(count, se->right, width_out);
     assert(*width_out!=1 && "uncanonicalized sub");
     return vc_bvMinusExpr(vc, *width_out, left, right);
   } 
 
   case Expr::Mul: {
     MulExpr *me = cast<MulExpr>(e);
-    ExprHandle right = construct(me->right, width_out);
+    ExprHandle right = construct(count, me->right, width_out);
     assert(*width_out!=1 && "uncanonicalized mul");
 
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(me->left))
@@ -663,13 +668,13 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
         return constructMulByConstant(right, *width_out, 
                                       CE->getZExtValue());
 
-    ExprHandle left = construct(me->left, width_out);
+    ExprHandle left = construct(count, me->left, width_out);
     return vc_bvMultExpr(vc, *width_out, left, right);
   }
 
   case Expr::UDiv: {
     UDivExpr *de = cast<UDivExpr>(e);
-    ExprHandle left = construct(de->left, width_out);
+    ExprHandle left = construct(count, de->left, width_out);
     assert(*width_out!=1 && "uncanonicalized udiv");
     
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(de->right)) {
@@ -687,13 +692,13 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
       }
     } 
 
-    ExprHandle right = construct(de->right, width_out);
+    ExprHandle right = construct(count, de->right, width_out);
     return vc_bvDivExpr(vc, *width_out, left, right);
   }
 
   case Expr::SDiv: {
     SDivExpr *de = cast<SDivExpr>(e);
-    ExprHandle left = construct(de->left, width_out);
+    ExprHandle left = construct(count, de->left, width_out);
     assert(*width_out!=1 && "uncanonicalized sdiv");
 
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(de->right))
@@ -704,13 +709,13 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
     // XXX need to test for proper handling of sign, not sure I
     // trust STP
-    ExprHandle right = construct(de->right, width_out);
+    ExprHandle right = construct(count, de->right, width_out);
     return vc_sbvDivExpr(vc, *width_out, left, right);
   }
 
   case Expr::URem: {
     URemExpr *de = cast<URemExpr>(e);
-    ExprHandle left = construct(de->left, width_out);
+    ExprHandle left = construct(count, de->left, width_out);
     assert(*width_out!=1 && "uncanonicalized urem");
     
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(de->right)) {
@@ -744,14 +749,14 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
       }
     }
     
-    ExprHandle right = construct(de->right, width_out);
+    ExprHandle right = construct(count, de->right, width_out);
     return vc_bvModExpr(vc, *width_out, left, right);
   }
 
   case Expr::SRem: {
     SRemExpr *de = cast<SRemExpr>(e);
-    ExprHandle left = construct(de->left, width_out);
-    ExprHandle right = construct(de->right, width_out);
+    ExprHandle left = construct(count, de->left, width_out);
+    ExprHandle right = construct(count, de->right, width_out);
     assert(*width_out!=1 && "uncanonicalized srem");
 
 #if 0 //not faster per first benchmark
@@ -778,7 +783,7 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Not: {
     NotExpr *ne = cast<NotExpr>(e);
-    ExprHandle expr = construct(ne->expr, width_out);
+    ExprHandle expr = construct(count, ne->expr, width_out);
     if (*width_out==1) {
       return vc_notExpr(vc, expr);
     } else {
@@ -788,8 +793,8 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::And: {
     AndExpr *ae = cast<AndExpr>(e);
-    ExprHandle left = construct(ae->left, width_out);
-    ExprHandle right = construct(ae->right, width_out);
+    ExprHandle left = construct(count, ae->left, width_out);
+    ExprHandle right = construct(count, ae->right, width_out);
     if (*width_out==1) {
       return vc_andExpr(vc, left, right);
     } else {
@@ -799,8 +804,8 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Or: {
     OrExpr *oe = cast<OrExpr>(e);
-    ExprHandle left = construct(oe->left, width_out);
-    ExprHandle right = construct(oe->right, width_out);
+    ExprHandle left = construct(count, oe->left, width_out);
+    ExprHandle right = construct(count, oe->right, width_out);
     if (*width_out==1) {
       return vc_orExpr(vc, left, right);
     } else {
@@ -810,8 +815,8 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Xor: {
     XorExpr *xe = cast<XorExpr>(e);
-    ExprHandle left = construct(xe->left, width_out);
-    ExprHandle right = construct(xe->right, width_out);
+    ExprHandle left = construct(count, xe->left, width_out);
+    ExprHandle right = construct(count, xe->right, width_out);
     
     if (*width_out==1) {
       // XXX check for most efficient?
@@ -824,35 +829,35 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Shl: {
     ShlExpr *se = cast<ShlExpr>(e);
-    ExprHandle left = construct(se->left, width_out);
+    ExprHandle left = construct(count, se->left, width_out);
     assert(*width_out!=1 && "uncanonicalized shl");
 
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(se->right)) {
       return bvLeftShift(left, (unsigned) CE->getLimitedValue());
     } else {
       int shiftWidth;
-      ExprHandle amount = construct(se->right, &shiftWidth);
+      ExprHandle amount = construct(count, se->right, &shiftWidth);
       return bvVarLeftShift( left, amount);
     }
   }
 
   case Expr::LShr: {
     LShrExpr *lse = cast<LShrExpr>(e);
-    ExprHandle left = construct(lse->left, width_out);
+    ExprHandle left = construct(count, lse->left, width_out);
     assert(*width_out!=1 && "uncanonicalized lshr");
 
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(lse->right)) {
       return bvRightShift(left, (unsigned) CE->getLimitedValue());
     } else {
       int shiftWidth;
-      ExprHandle amount = construct(lse->right, &shiftWidth);
+      ExprHandle amount = construct(count, lse->right, &shiftWidth);
       return bvVarRightShift( left, amount);
     }
   }
 
   case Expr::AShr: {
     AShrExpr *ase = cast<AShrExpr>(e);
-    ExprHandle left = construct(ase->left, width_out);
+    ExprHandle left = construct(count, ase->left, width_out);
     assert(*width_out!=1 && "uncanonicalized ashr");
     
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(ase->right)) {
@@ -861,7 +866,7 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
       return constructAShrByConstant(left, shift, signedBool);
     } else {
       int shiftWidth;
-      ExprHandle amount = construct(ase->right, &shiftWidth);
+      ExprHandle amount = construct(count, ase->right, &shiftWidth);
       return bvVarArithRightShift( left, amount);
     }
   }
@@ -870,8 +875,8 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Eq: {
     EqExpr *ee = cast<EqExpr>(e);
-    ExprHandle left = construct(ee->left, width_out);
-    ExprHandle right = construct(ee->right, width_out);
+    ExprHandle left = construct(count, ee->left, width_out);
+    ExprHandle right = construct(count, ee->right, width_out);
     if (*width_out==1) {
       if (ConstantExpr *CE = dyn_cast<ConstantExpr>(ee->left)) {
         if (CE->isTrue())
@@ -888,8 +893,8 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Ult: {
     UltExpr *ue = cast<UltExpr>(e);
-    ExprHandle left = construct(ue->left, width_out);
-    ExprHandle right = construct(ue->right, width_out);
+    ExprHandle left = construct(count, ue->left, width_out);
+    ExprHandle right = construct(count, ue->right, width_out);
     assert(*width_out!=1 && "uncanonicalized ult");
     *width_out = 1;
     return vc_bvLtExpr(vc, left, right);
@@ -897,8 +902,8 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Ule: {
     UleExpr *ue = cast<UleExpr>(e);
-    ExprHandle left = construct(ue->left, width_out);
-    ExprHandle right = construct(ue->right, width_out);
+    ExprHandle left = construct(count, ue->left, width_out);
+    ExprHandle right = construct(count, ue->right, width_out);
     assert(*width_out!=1 && "uncanonicalized ule");
     *width_out = 1;
     return vc_bvLeExpr(vc, left, right);
@@ -906,8 +911,8 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Slt: {
     SltExpr *se = cast<SltExpr>(e);
-    ExprHandle left = construct(se->left, width_out);
-    ExprHandle right = construct(se->right, width_out);
+    ExprHandle left = construct(count, se->left, width_out);
+    ExprHandle right = construct(count, se->right, width_out);
     assert(*width_out!=1 && "uncanonicalized slt");
     *width_out = 1;
     return vc_sbvLtExpr(vc, left, right);
@@ -915,8 +920,8 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
 
   case Expr::Sle: {
     SleExpr *se = cast<SleExpr>(e);
-    ExprHandle left = construct(se->left, width_out);
-    ExprHandle right = construct(se->right, width_out);
+    ExprHandle left = construct(count, se->left, width_out);
+    ExprHandle right = construct(count, se->right, width_out);
     assert(*width_out!=1 && "uncanonicalized sle");
     *width_out = 1;
     return vc_sbvLeExpr(vc, left, right);

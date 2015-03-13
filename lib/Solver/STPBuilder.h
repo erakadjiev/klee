@@ -41,15 +41,16 @@ namespace klee {
     ExprHolder *H;
     
   public:
-    int constructs = 0;
-    ExprHandle() : H(new ExprHolder(0)) { H->count++; }
-    ExprHandle(::VCExpr _expr) : H(new ExprHolder(_expr)) { H->count++; }
-    ExprHandle(const ExprHandle &b) : H(b.H) { H->count++; }
+    int constructs;
+    ExprHandle() : H(new ExprHolder(0)), constructs(0) { H->count++; }
+    ExprHandle(::VCExpr _expr) : H(new ExprHolder(_expr)), constructs(0) { H->count++; }
+    ExprHandle(const ExprHandle &b) : H(b.H), constructs(b.constructs) { H->count++; }
     ~ExprHandle() { if (--H->count == 0) delete H; }
     
     ExprHandle &operator=(const ExprHandle &b) {
       if (--H->count == 0) delete H;
       H = b.H;
+      constructs = b.constructs;
       H->count++;
       return *this;
     }
@@ -83,7 +84,6 @@ class STPBuilder {
   long notConstants;
   long cacheHits;
   
-  int currentConstructs;
   long double avg;
   int max;
 
@@ -117,7 +117,8 @@ private:
   ::VCExpr getInitialArray(const Array *os);
   ::VCExpr getArrayForUpdate(const Array *root, const UpdateNode *un);
 
-  ExprHandle constructActual(ref<Expr> e, int *width_out);
+  ExprHandle constructActual(int& count, ref<Expr> e, int *width_out);
+  ExprHandle construct(int& count, ref<Expr> e, int *width_out);
   ExprHandle construct(ref<Expr> e, int *width_out);
   
   ::VCExpr buildVar(const char *name, unsigned width);
