@@ -43,8 +43,6 @@ namespace klee {
     std::vector<Statistic*> stats;
     uint64_t *globalStats;
     uint64_t *indexedStats;
-    StatisticRecord *contextStats;
-    unsigned index;
 
   public:
     StatisticManager();
@@ -52,16 +50,11 @@ namespace klee {
 
     void useIndexedStats(unsigned totalIndices);
 
-    StatisticRecord *getContext();
-    void setContext(StatisticRecord *sr); /* null to reset */
-
-    void setIndex(unsigned i) { index = i; }
-    unsigned getIndex() { return index; }
     unsigned getNumStatistics() { return stats.size(); }
     Statistic &getStatistic(unsigned i) { return *stats[i]; }
     
     void registerStatistic(Statistic &s);
-    void incrementStatistic(Statistic &s, uint64_t addend);
+    void incrementStatistic(Statistic &s, InstructionContext& instrCtx, uint64_t addend);
     uint64_t getValue(const Statistic &s) const;
     void incrementIndexedValue(const Statistic &s, unsigned index, 
                                uint64_t addend) const;
@@ -73,23 +66,17 @@ namespace klee {
 
   extern StatisticManager *theStatisticManager;
 
-  inline void StatisticManager::incrementStatistic(Statistic &s, 
+  inline void StatisticManager::incrementStatistic(Statistic &s,
+                                                   InstructionContext& instrCtx,
                                                    uint64_t addend) {
     if (enabled) {
       globalStats[s.id] += addend;
       if (indexedStats) {
-        indexedStats[index*stats.size() + s.id] += addend;
-        if (contextStats)
-          contextStats->data[s.id] += addend;
+        indexedStats[(instrCtx.statsIndex)*stats.size() + s.id] += addend;
+        if (instrCtx.statsRecord)
+          instrCtx.statsRecord->data[s.id] += addend;
       }
     }
-  }
-
-  inline StatisticRecord *StatisticManager::getContext() {
-    return contextStats;
-  }
-  inline void StatisticManager::setContext(StatisticRecord *sr) {
-    contextStats = sr;
   }
 
   inline void StatisticRecord::zero() {

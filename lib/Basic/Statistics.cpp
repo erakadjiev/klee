@@ -16,9 +16,7 @@ using namespace klee;
 StatisticManager::StatisticManager()
   : enabled(true),
     globalStats(0),
-    indexedStats(0),
-    contextStats(0),
-    index(0) {
+    indexedStats(0) {
 }
 
 StatisticManager::~StatisticManager() {
@@ -74,8 +72,13 @@ Statistic::Statistic(const std::string &_name,
 Statistic::~Statistic() {
 }
 
-Statistic &Statistic::operator +=(const uint64_t addend) {
-  theStatisticManager->incrementStatistic(*this, addend);
+Statistic &Statistic::add(const uint64_t addend) {
+  theStatisticManager->incrementStatistic(*this, InstructionContext::emptyContext(), addend);
+  return *this;
+}
+
+Statistic &Statistic::add(const uint64_t addend, InstructionContext& instrCtx) {
+  theStatisticManager->incrementStatistic(*this, instrCtx, addend);
   return *this;
 }
 

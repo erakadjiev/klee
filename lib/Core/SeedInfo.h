@@ -19,6 +19,7 @@ extern "C" {
 
 namespace klee {
   class ExecutionState;
+  class InstructionContext;
   class TimingSolver;
 
   class SeedInfo {
@@ -39,7 +40,8 @@ namespace klee {
     
     /// Patch the seed so that condition is satisfied while retaining as
     /// many of the seed values as possible.
-    void patchSeed(const ExecutionState &state, 
+    void patchSeed(const ExecutionState &state,
+                   InstructionContext& instrCtx,
                    ref<Expr> condition,
                    TimingSolver *solver);
   };

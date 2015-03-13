@@ -10,6 +10,7 @@
 #ifndef KLEE_TIMERSTATINCREMENTER_H
 #define KLEE_TIMERSTATINCREMENTER_H
 
+#include "klee/InstructionContext.h"
 #include "klee/Statistics.h"
 #include "klee/Internal/Support/Timer.h"
 
@@ -18,11 +19,13 @@ namespace klee {
   private:
     WallTimer timer;
     Statistic &statistic;
+    InstructionContext& instrCtx;
 
   public:
-    TimerStatIncrementer(Statistic &_statistic) : statistic(_statistic) {}
+    TimerStatIncrementer(Statistic &_statistic) : statistic(_statistic), instrCtx(InstructionContext::emptyContext()) {}
+    TimerStatIncrementer(Statistic &_statistic, InstructionContext& instrCtx) : statistic(_statistic), instrCtx(instrCtx) {}
     ~TimerStatIncrementer() {
-      statistic += timer.check(); 
+      statistic.add(timer.check(), instrCtx); 
     }
 
     uint64_t check() { return timer.check(); }

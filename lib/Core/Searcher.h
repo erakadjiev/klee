@@ -28,15 +28,15 @@ namespace klee {
   template<class T> class DiscretePDF;
   class ExecutionState;
   class Executor;
-  class CurrentInstructionContext;
+  class InstructionContext;
 
   class Searcher {
   public:
     virtual ~Searcher();
 
-    // xxx CurrentInstructionContext reference needed, because some searchers
+    // xxx InstructionContext reference needed, because some searchers
     // (merging ones) terminate states inside this method
-    virtual ExecutionState &selectState(CurrentInstructionContext& instrCtx) = 0;
+    virtual ExecutionState &selectState(InstructionContext& instrCtx) = 0;
 
     virtual void update(ExecutionState *current,
                         const std::set<ExecutionState*> &addedStates,
@@ -103,7 +103,7 @@ namespace klee {
     std::vector<ExecutionState*> states;
 
   public:
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -119,7 +119,7 @@ namespace klee {
     std::deque<ExecutionState*> states;
 
   public:
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -135,7 +135,7 @@ namespace klee {
     std::vector<ExecutionState*> states;
 
   public:
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -169,7 +169,7 @@ namespace klee {
     WeightedRandomSearcher(WeightType type);
     ~WeightedRandomSearcher();
 
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -197,7 +197,7 @@ namespace klee {
     RandomPathSearcher(Executor &_executor);
     ~RandomPathSearcher();
 
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -216,7 +216,7 @@ namespace klee {
     ConcurrentRandomPathSearcher(Executor &_executor);
     ~ConcurrentRandomPathSearcher();
 
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -234,7 +234,7 @@ namespace klee {
     public:
       StateRemovingSearcher(Searcher* baseSearcher);
       ~StateRemovingSearcher();
-      ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+      ExecutionState &selectState(InstructionContext& instrCtx);
       void update(ExecutionState *current,
           const std::set<ExecutionState*> &addedStates,
           const std::set<ExecutionState*> &removedStates);
@@ -261,7 +261,7 @@ namespace klee {
     MergingSearcher(Executor &executor, Searcher *baseSearcher);
     ~MergingSearcher();
 
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -286,7 +286,7 @@ namespace klee {
     BumpMergingSearcher(Executor &executor, Searcher *baseSearcher);
     ~BumpMergingSearcher();
 
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -313,7 +313,7 @@ namespace klee {
                      unsigned _instructionBudget);
     ~BatchingSearcher();
 
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -352,7 +352,7 @@ namespace klee {
                      unsigned _instructionBudget);
     ~ConcurrentBatchingSearcher();
 
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -377,7 +377,7 @@ namespace klee {
     IterativeDeepeningTimeSearcher(Searcher *baseSearcher);
     ~IterativeDeepeningTimeSearcher();
 
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);
@@ -399,7 +399,7 @@ namespace klee {
     explicit InterleavedSearcher(const searchers_ty &_searchers);
     ~InterleavedSearcher();
 
-    ExecutionState &selectState(CurrentInstructionContext& instrCtx);
+    ExecutionState &selectState(InstructionContext& instrCtx);
     void update(ExecutionState *current,
                 const std::set<ExecutionState*> &addedStates,
                 const std::set<ExecutionState*> &removedStates);

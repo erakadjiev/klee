@@ -110,7 +110,7 @@ void Executor::addTimer(Timer *timer, double rate) {
 }
 
 void Executor::processTimers(ExecutionState *current,
-                             CurrentInstructionContext& instrCtx,
+                             InstructionContext& instrCtx,
                              double maxInstTime) {
 //  static unsigned callsWithoutCheck = 0;
 //  unsigned ticks = timerTicks;

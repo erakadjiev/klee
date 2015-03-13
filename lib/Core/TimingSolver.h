@@ -17,6 +17,7 @@
 
 namespace klee {
   class ExecutionState;
+  class InstructionContext;
   class Solver;  
 
   /// TimingSolver - A simple class which wraps a solver and handles
@@ -46,20 +47,20 @@ namespace klee {
       return solver->getConstraintLog(query);
     }
 
-    bool evaluate(const ExecutionState&, ref<Expr>, Solver::Validity &result);
+    bool evaluate(const ExecutionState&, InstructionContext& instrCtx, ref<Expr>, Solver::Validity &result);
 
-    bool mustBeTrue(const ExecutionState&, ref<Expr>, bool &result);
+    bool mustBeTrue(const ExecutionState&, InstructionContext& instrCtx, ref<Expr>, bool &result);
 
-    bool mustBeFalse(const ExecutionState&, ref<Expr>, bool &result);
+    bool mustBeFalse(const ExecutionState&, InstructionContext& instrCtx, ref<Expr>, bool &result);
 
-    bool mayBeTrue(const ExecutionState&, ref<Expr>, bool &result);
+    bool mayBeTrue(const ExecutionState&, InstructionContext& instrCtx, ref<Expr>, bool &result);
 
-    bool mayBeFalse(const ExecutionState&, ref<Expr>, bool &result);
+    bool mayBeFalse(const ExecutionState&, InstructionContext& instrCtx, ref<Expr>, bool &result);
 
-    bool getValue(const ExecutionState &, ref<Expr> expr, 
+    bool getValue(const ExecutionState &, InstructionContext& instrCtx, ref<Expr> expr, 
                   ref<ConstantExpr> &result);
 
-    bool getInitialValues(const ExecutionState&, 
+    bool getInitialValues(const ExecutionState&, InstructionContext& instrCtx, 
                           const std::vector<const Array*> &objects,
                           std::vector< std::vector<unsigned char> > &result);
 

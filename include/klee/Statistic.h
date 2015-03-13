@@ -10,6 +10,7 @@
 #ifndef KLEE_STATISTIC_H
 #define KLEE_STATISTIC_H
 
+#include "klee/InstructionContext.h"
 #include "klee/Config/Version.h"
 #include "llvm/Support/DataTypes.h"
 #include <string>
@@ -56,10 +57,30 @@ namespace klee {
     operator uint64_t () const { return getValue(); }
 
     /// operator++ - Increment the statistic by 1.
-    Statistic &operator ++() { return (*this += 1); }
+    /// This increment method must be called on statistics that have to be kept
+    /// track of at instruction level. Those are the ones stored in the call path 
+    /// nodes, and are used for calltree tracking. 
+    /// E.g. forks, solverTime, instructions. 
+    Statistic& increment(InstructionContext& instrCtx) { return add(1, instrCtx); }
+    /// Increment the statistic by 1.
+    /// Statistic will not be updated on the instruction level (inside the call path node).
+    Statistic& increment() { return add(1, InstructionContext::emptyContext()); }
+    /// operator++ - Increment the statistic by 1.
+    /// Statistic will not be updated on the instruction level (inside the call path node).
+    Statistic &operator ++() { return increment(); }
 
+    /// Increment the statistic by \arg addend.
+    /// This increment method must be called on statistics that have to be kept
+    /// track of at instruction level. Those are the ones stored in the call path 
+    /// nodes, and are used for calltree tracking. 
+    /// E.g. forks, solverTime, instructions. 
+    Statistic& add(const uint64_t addend, InstructionContext& instrCtx);
+    /// Increment the statistic by \arg addend.
+    /// Statistic will not be updated on the instruction level (inside the call path node).
+    Statistic& add(const uint64_t addend);
     /// operator+= - Increment the statistic by \arg addend.
-    Statistic &operator +=(const uint64_t addend);
+    /// Statistic will not be updated on the instruction level (inside the call path node).
+    Statistic &operator +=(const uint64_t addend) { return add(addend); }
   };
 }
 

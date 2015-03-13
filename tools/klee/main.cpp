@@ -242,6 +242,7 @@ public:
   void setInterpreter(Interpreter *i);
 
   void processTestCase(const ExecutionState  &state,
+                       InstructionContext& instrCtx,
                        const char *errorMessage, 
                        const char *errorSuffix);
 
@@ -410,6 +411,7 @@ llvm::raw_fd_ostream *KleeHandler::openTestFile(const std::string &suffix,
 
 /* Outputs all files (.ktest, .pc, .cov etc.) describing a test case */
 void KleeHandler::processTestCase(const ExecutionState &state,
+                                  InstructionContext& instrCtx,
                                   const char *errorMessage, 
                                   const char *errorSuffix) {
   if (errorMessage && ExitOnError) {
@@ -419,7 +421,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
 
   if (!NoOutput) {
     std::vector< std::pair<std::string, std::vector<unsigned char> > > out;
-    bool success = m_interpreter->getSymbolicSolution(state, out);
+    bool success = m_interpreter->getSymbolicSolution(state, instrCtx, out);
 
     if (!success)
       klee_warning("unable to get symbolic solution, losing test case");

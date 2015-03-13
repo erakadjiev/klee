@@ -25,6 +25,7 @@ class raw_fd_ostream;
 
 namespace klee {
 class ExecutionState;
+class InstructionContext;
 class Interpreter;
 class TreeStreamWriter;
 
@@ -41,6 +42,7 @@ public:
   virtual void incPathsExplored() = 0;
 
   virtual void processTestCase(const ExecutionState &state,
+                               InstructionContext& instrCtx,
                                const char *err, 
                                const char *suffix) = 0;
 };
@@ -145,7 +147,8 @@ public:
                                 std::string &res,
                                 LogType logFormat = STP) = 0;
 
-  virtual bool getSymbolicSolution(const ExecutionState &state, 
+  virtual bool getSymbolicSolution(const ExecutionState &state,
+                                   InstructionContext& instrCtx,
                                    std::vector< 
                                    std::pair<std::string,
                                    std::vector<unsigned char> > >

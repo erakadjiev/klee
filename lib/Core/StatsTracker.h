@@ -69,7 +69,8 @@ namespace klee {
     // called when some side of a branch has been visited. it is
     // imperative that this be called when the statistics index is at
     // the index for the branch itself.
-    void markBranchVisited(ExecutionState *visitedTrue, 
+    void markBranchVisited(InstructionContext& instrCtx,
+                           ExecutionState *visitedTrue, 
                            ExecutionState *visitedFalse);
     
     // called when execution is done and stats files should be flushed
@@ -77,7 +78,7 @@ namespace klee {
 
     // process stats for a single instruction step, es is the state
     // about to be stepped
-    void stepInstruction(ExecutionState &es);
+    void stepInstruction(ExecutionState &es, InstructionContext& instrCtx);
 
     /// Return time in seconds since execution start.
     double elapsed();

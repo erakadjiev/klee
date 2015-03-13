@@ -23,8 +23,8 @@ using namespace llvm;
 
 /***/
 
-bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
-                            Solver::Validity &result) {
+bool TimingSolver::evaluate(const ExecutionState& state, InstructionContext& instrCtx, 
+                            ref<Expr> expr, Solver::Validity &result) {
   // Fast path, to avoid timer and OS overhead.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(expr)) {
     result = CE->isTrue() ? Solver::True : Solver::False;
@@ -41,14 +41,14 @@ bool TimingSolver::evaluate(const ExecutionState& state, ref<Expr> expr,
 
   sys::Process::GetTimeUsage(delta,user,sys);
   delta -= now;
-  stats::solverTime += delta.usec();
+  stats::solverTime.add(delta.usec(), instrCtx);
   state.queryCost += delta.usec()/1000000.;
 
   return success;
 }
 
-bool TimingSolver::mustBeTrue(const ExecutionState& state, ref<Expr> expr, 
-                              bool &result) {
+bool TimingSolver::mustBeTrue(const ExecutionState& state, InstructionContext& instrCtx,
+                              ref<Expr> expr, bool &result) {
   // Fast path, to avoid timer and OS overhead.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(expr)) {
     result = CE->isTrue() ? true : false;
@@ -65,37 +65,37 @@ bool TimingSolver::mustBeTrue(const ExecutionState& state, ref<Expr> expr,
 
   sys::Process::GetTimeUsage(delta,user,sys);
   delta -= now;
-  stats::solverTime += delta.usec();
+  stats::solverTime.add(delta.usec(), instrCtx);
   state.queryCost += delta.usec()/1000000.;
 
   return success;
 }
 
-bool TimingSolver::mustBeFalse(const ExecutionState& state, ref<Expr> expr,
-                               bool &result) {
-  return mustBeTrue(state, Expr::createIsZero(expr), result);
+bool TimingSolver::mustBeFalse(const ExecutionState& state, InstructionContext& instrCtx, 
+                               ref<Expr> expr, bool &result) {
+  return mustBeTrue(state, instrCtx, Expr::createIsZero(expr), result);
 }
 
-bool TimingSolver::mayBeTrue(const ExecutionState& state, ref<Expr> expr, 
-                             bool &result) {
+bool TimingSolver::mayBeTrue(const ExecutionState& state, InstructionContext& instrCtx, 
+                             ref<Expr> expr, bool &result) {
   bool res;
-  if (!mustBeFalse(state, expr, res))
+  if (!mustBeFalse(state, instrCtx, expr, res))
     return false;
   result = !res;
   return true;
 }
 
-bool TimingSolver::mayBeFalse(const ExecutionState& state, ref<Expr> expr, 
-                              bool &result) {
+bool TimingSolver::mayBeFalse(const ExecutionState& state, InstructionContext& instrCtx,
+                              ref<Expr> expr, bool &result) {
   bool res;
-  if (!mustBeTrue(state, expr, res))
+  if (!mustBeTrue(state, instrCtx, expr, res))
     return false;
   result = !res;
   return true;
 }
 
-bool TimingSolver::getValue(const ExecutionState& state, ref<Expr> expr, 
-                            ref<ConstantExpr> &result) {
+bool TimingSolver::getValue(const ExecutionState& state, InstructionContext& instrCtx,
+                            ref<Expr> expr, ref<ConstantExpr> &result) {
   // Fast path, to avoid timer and OS overhead.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(expr)) {
     result = CE;
@@ -112,18 +112,18 @@ bool TimingSolver::getValue(const ExecutionState& state, ref<Expr> expr,
 
   sys::Process::GetTimeUsage(delta,user,sys);
   delta -= now;
-  stats::solverTime += delta.usec();
+  stats::solverTime.add(delta.usec(), instrCtx);
   state.queryCost += delta.usec()/1000000.;
 
   return success;
 }
 
 bool 
-TimingSolver::getInitialValues(const ExecutionState& state, 
+TimingSolver::getInitialValues(const ExecutionState& state,
+                               InstructionContext& instrCtx,
                                const std::vector<const Array*>
                                  &objects,
-                               std::vector< std::vector<unsigned char> >
-                                 &result) {
+                               std::vector< std::vector<unsigned char> > &result) {
   if (objects.empty())
     return true;
 
@@ -136,7 +136,7 @@ TimingSolver::getInitialValues(const ExecutionState& state,
   
   sys::Process::GetTimeUsage(delta,user,sys);
   delta -= now;
-  stats::solverTime += delta.usec();
+  stats::solverTime.add(delta.usec(), instrCtx);
   state.queryCost += delta.usec()/1000000.;
   
   return success;

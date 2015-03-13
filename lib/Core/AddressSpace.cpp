@@ -69,6 +69,7 @@ bool AddressSpace::resolveOne(const ref<ConstantExpr> &addr,
 }
 
 bool AddressSpace::resolveOne(ExecutionState &state,
+                              InstructionContext& instrCtx,
                               TimingSolver *solver,
                               ref<Expr> address,
                               ObjectPair &result,
@@ -77,12 +78,12 @@ bool AddressSpace::resolveOne(ExecutionState &state,
     success = resolveOne(CE, result);
     return true;
   } else {
-    TimerStatIncrementer timer(stats::resolveTime);
+    TimerStatIncrementer timer(stats::resolveTime, instrCtx);
 
     // try cheap search, will succeed for any inbounds pointer
 
     ref<ConstantExpr> cex;
-    if (!solver->getValue(state, address, cex))
+    if (!solver->getValue(state, instrCtx, address, cex))
       return false;
     uint64_t example = cex->getZExtValue();
     MemoryObject hack(example);
@@ -109,7 +110,7 @@ bool AddressSpace::resolveOne(ExecutionState &state,
       const MemoryObject *mo = oi->first;
         
       bool mayBeTrue;
-      if (!solver->mayBeTrue(state, 
+      if (!solver->mayBeTrue(state, instrCtx, 
                              mo->getBoundsCheckPointer(address), mayBeTrue))
         return false;
       if (mayBeTrue) {
@@ -118,7 +119,7 @@ bool AddressSpace::resolveOne(ExecutionState &state,
         return true;
       } else {
         bool mustBeTrue;
-        if (!solver->mustBeTrue(state, 
+        if (!solver->mustBeTrue(state, instrCtx, 
                                 UgeExpr::create(address, mo->getBaseExpr()),
                                 mustBeTrue))
           return false;
@@ -132,7 +133,7 @@ bool AddressSpace::resolveOne(ExecutionState &state,
       const MemoryObject *mo = oi->first;
 
       bool mustBeTrue;
-      if (!solver->mustBeTrue(state, 
+      if (!solver->mustBeTrue(state, instrCtx, 
                               UltExpr::create(address, mo->getBaseExpr()),
                               mustBeTrue))
         return false;
@@ -141,7 +142,7 @@ bool AddressSpace::resolveOne(ExecutionState &state,
       } else {
         bool mayBeTrue;
 
-        if (!solver->mayBeTrue(state, 
+        if (!solver->mayBeTrue(state, instrCtx, 
                                mo->getBoundsCheckPointer(address),
                                mayBeTrue))
           return false;
@@ -159,6 +160,7 @@ bool AddressSpace::resolveOne(ExecutionState &state,
 }
 
 bool AddressSpace::resolve(ExecutionState &state,
+                           InstructionContext& instrCtx,
                            TimingSolver *solver, 
                            ref<Expr> p, 
                            ResolutionList &rl, 
@@ -170,7 +172,7 @@ bool AddressSpace::resolve(ExecutionState &state,
       rl.push_back(res);
     return false;
   } else {
-    TimerStatIncrementer timer(stats::resolveTime);
+    TimerStatIncrementer timer(stats::resolveTime, instrCtx);
     uint64_t timeout_us = (uint64_t) (timeout*1000000.);
 
     // XXX in general this isn't exactly what we want... for
@@ -189,7 +191,7 @@ bool AddressSpace::resolve(ExecutionState &state,
     // just get this by inspection of the expr.
     
     ref<ConstantExpr> cex;
-    if (!solver->getValue(state, p, cex))
+    if (!solver->getValue(state, instrCtx, p, cex))
       return true;
     uint64_t example = cex->getZExtValue();
     MemoryObject hack(example);
@@ -217,7 +219,7 @@ bool AddressSpace::resolve(ExecutionState &state,
       // XXX I think there is some query wasteage here?
       ref<Expr> inBounds = mo->getBoundsCheckPointer(p);
       bool mayBeTrue;
-      if (!solver->mayBeTrue(state, inBounds, mayBeTrue))
+      if (!solver->mayBeTrue(state, instrCtx, inBounds, mayBeTrue))
         return true;
       if (mayBeTrue) {
         rl.push_back(*oi);
@@ -226,7 +228,7 @@ bool AddressSpace::resolve(ExecutionState &state,
         unsigned size = rl.size();
         if (size==1) {
           bool mustBeTrue;
-          if (!solver->mustBeTrue(state, inBounds, mustBeTrue))
+          if (!solver->mustBeTrue(state, instrCtx, inBounds, mustBeTrue))
             return true;
           if (mustBeTrue)
             return false;
@@ -236,7 +238,7 @@ bool AddressSpace::resolve(ExecutionState &state,
       }
         
       bool mustBeTrue;
-      if (!solver->mustBeTrue(state, 
+      if (!solver->mustBeTrue(state, instrCtx, 
                               UgeExpr::create(p, mo->getBaseExpr()),
                               mustBeTrue))
         return true;
@@ -250,7 +252,7 @@ bool AddressSpace::resolve(ExecutionState &state,
         return true;
 
       bool mustBeTrue;
-      if (!solver->mustBeTrue(state, 
+      if (!solver->mustBeTrue(state, instrCtx, 
                               UltExpr::create(p, mo->getBaseExpr()),
                               mustBeTrue))
         return true;
@@ -260,7 +262,7 @@ bool AddressSpace::resolve(ExecutionState &state,
       // XXX I think there is some query wasteage here?
       ref<Expr> inBounds = mo->getBoundsCheckPointer(p);
       bool mayBeTrue;
-      if (!solver->mayBeTrue(state, inBounds, mayBeTrue))
+      if (!solver->mayBeTrue(state, instrCtx, inBounds, mayBeTrue))
         return true;
       if (mayBeTrue) {
         rl.push_back(*oi);
@@ -269,7 +271,7 @@ bool AddressSpace::resolve(ExecutionState &state,
         unsigned size = rl.size();
         if (size==1) {
           bool mustBeTrue;
-          if (!solver->mustBeTrue(state, inBounds, mustBeTrue))
+          if (!solver->mustBeTrue(state, instrCtx, inBounds, mustBeTrue))
             return true;
           if (mustBeTrue)
             return false;

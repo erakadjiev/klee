@@ -12,6 +12,7 @@
 #include "StatsTracker.h"
 
 #include "klee/ExecutionState.h"
+#include "klee/InstructionContext.h"
 #include "klee/Statistics.h"
 #include "klee/Config/Version.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
@@ -221,8 +222,6 @@ StatsTracker::StatsTracker(Executor &_executor, std::string _objectFilename,
       KInstruction *ki = kf->instructions[i];
 
       if (OutputIStats) {
-        unsigned id = ki->info->id;
-        theStatisticManager->setIndex(id);
         if (kf->trackCoverage && instructionIsCoverable(ki->inst))
           ++stats::uncoveredInstructions;
       }
@@ -271,8 +270,9 @@ void StatsTracker::done() {
     writeIStats();
 }
 
-void StatsTracker::stepInstruction(ExecutionState &es) {
+void StatsTracker::stepInstruction(ExecutionState &es, InstructionContext& instrCtx) {
   if (OutputIStats) {
+    // hasn't been updated for concurrent execution
     if (TrackInstructionTime) {
       static sys::TimeValue lastNowTime(0,0),lastUserTime(0,0);
     
@@ -284,8 +284,8 @@ void StatsTracker::stepInstruction(ExecutionState &es) {
         sys::Process::GetTimeUsage(now,user,sys);
         sys::TimeValue delta = user - lastUserTime;
         sys::TimeValue deltaNow = now - lastNowTime;
-        stats::instructionTime += delta.usec();
-        stats::instructionRealTime += deltaNow.usec();
+        stats::instructionTime.add(delta.usec(), instrCtx);
+        stats::instructionRealTime.add(deltaNow.usec(), instrCtx);
         lastUserTime = user;
         lastNowTime = now;
       }
@@ -294,9 +294,9 @@ void StatsTracker::stepInstruction(ExecutionState &es) {
     Instruction *inst = es.pc->inst;
     const InstructionInfo &ii = *es.pc->info;
     StackFrame &sf = es.stack.back();
-    theStatisticManager->setIndex(ii.id);
+    instrCtx.statsIndex = ii.id;
     if (UseCallPaths)
-      theStatisticManager->setContext(&sf.callPathNode->statistics);
+      instrCtx.statsRecord = (&sf.callPathNode->statistics);
 
     if (es.instsSinceCovNew)
       ++es.instsSinceCovNew;
@@ -311,8 +311,8 @@ void StatsTracker::stepInstruction(ExecutionState &es) {
           es.coveredLines[&ii.file].insert(ii.line);
 	es.coveredNew = true;
         es.instsSinceCovNew = 1;
-	++stats::coveredInstructions;
-	stats::uncoveredInstructions += (uint64_t)-1;
+	stats::coveredInstructions.increment(instrCtx);
+	stats::uncoveredInstructions.add((uint64_t)-1, instrCtx);
       }
     }
   }
@@ -351,16 +351,17 @@ void StatsTracker::framePopped(ExecutionState &es) {
 }
 
 
-void StatsTracker::markBranchVisited(ExecutionState *visitedTrue, 
+void StatsTracker::markBranchVisited(InstructionContext& instrCtx,
+                                     ExecutionState *visitedTrue, 
                                      ExecutionState *visitedFalse) {
   if (OutputIStats) {
-    unsigned id = theStatisticManager->getIndex();
+    unsigned id = instrCtx.statsIndex;
     uint64_t hasTrue = theStatisticManager->getIndexedValue(stats::trueBranches, id);
     uint64_t hasFalse = theStatisticManager->getIndexedValue(stats::falseBranches, id);
     if (visitedTrue && !hasTrue) {
       visitedTrue->coveredNew = true;
       visitedTrue->instsSinceCovNew = 1;
-      ++stats::trueBranches;
+      stats::trueBranches.increment(instrCtx);
       if (hasFalse) { ++fullBranches; --partialBranches; }
       else ++partialBranches;
       hasTrue = 1;
@@ -368,7 +369,7 @@ void StatsTracker::markBranchVisited(ExecutionState *visitedTrue,
     if (visitedFalse && !hasFalse) {
       visitedFalse->coveredNew = true;
       visitedFalse->instsSinceCovNew = 1;
-      ++stats::falseBranches;
+      stats::falseBranches.increment(instrCtx);
       if (hasTrue) { ++fullBranches; --partialBranches; }
       else ++partialBranches;
     }

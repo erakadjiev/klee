@@ -52,6 +52,7 @@ namespace klee {
   class Array;
   struct Cell;
   class ExecutionState;
+  class InstructionContext;
   class ExternalDispatcher;
   class Expr;
   class InstructionInfoTable;
@@ -72,25 +73,6 @@ namespace klee {
   class TimingSolver;
   class TreeStreamWriter;
   template<class T> class ref;
-
-
-
-  /// \todo Add a context object to keep track of data only live
-  /// during an instruction step. Should contain addedStates,
-  /// removedStates, and haltExecution, among others.
-  class CurrentInstructionContext{
-    public:
-      /// Used to track states that have been added during the current
-      /// instructions step.
-      /// \invariant \ref addedStates is a subset of \ref states.
-      /// \invariant \ref addedStates and \ref removedStates are disjoint.
-      std::set<ExecutionState*> addedStates;
-      /// Used to track states that have been removed during the current
-      /// instructions step.
-      /// \invariant \ref removedStates is a subset of \ref states.
-      /// \invariant \ref addedStates and \ref removedStates are disjoint.
-      std::set<ExecutionState*> removedStates;
-  };
 
 class Executor : public Interpreter {
   friend class BumpMergingSearcher;
@@ -193,7 +175,7 @@ private:
                                     ExecutionState &state);
   
   void executeInstruction(ExecutionState &state,
-                          CurrentInstructionContext& instrCtx,
+                          InstructionContext& instrCtx,
                           KInstruction *ki);
 
   void printFileLine(ExecutionState &state, KInstruction *ki);
@@ -204,7 +186,7 @@ private:
   void runInFiber(ExecutionState &initialState);
 
   void checkMaxMemory(ExecutionState &current, 
-      CurrentInstructionContext& instrCtx);
+      InstructionContext& instrCtx);
   void dumpStatesIfRequired();
 
   // Given a concrete object in our [klee's] address space, add it to 
@@ -217,15 +199,15 @@ private:
 			      unsigned offset);
   void initializeGlobals(ExecutionState &state);
 
-  void stepInstruction(ExecutionState &state);
+  void stepInstruction(ExecutionState &state, InstructionContext& instrCtx);
   void updateStates(ExecutionState *current,
-                    CurrentInstructionContext& instrCtx);
+                    InstructionContext& instrCtx);
   void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);
 
   void callExternalFunction(ExecutionState &state,
-                            CurrentInstructionContext& instrCtx,
+                            InstructionContext& instrCtx,
                             KInstruction *target,
                             llvm::Function *function,
                             std::vector< ref<Expr> > &arguments);
@@ -244,7 +226,7 @@ private:
   typedef std::vector< std::pair<std::pair<const MemoryObject*, const ObjectState*>, 
                                  ExecutionState*> > ExactResolutionList;
   void resolveExact(ExecutionState &state,
-                    CurrentInstructionContext& instrCtx,
+                    InstructionContext& instrCtx,
                     ref<Expr> p,
                     ExactResolutionList &results,
                     const std::string &name);
@@ -265,7 +247,7 @@ private:
   /// minimum of the size of the old and new objects, with remaining
   /// bytes initialized as specified by zeroMemory.
   void executeAlloc(ExecutionState &state,
-                    CurrentInstructionContext& instrCtx,
+                    InstructionContext& instrCtx,
                     ref<Expr> size,
                     bool isLocal,
                     KInstruction *target,
@@ -278,12 +260,12 @@ private:
   /// state to fork and that \ref state cannot be safely accessed
   /// afterwards.
   void executeFree(ExecutionState &state,
-                   CurrentInstructionContext& instrCtx,
+                   InstructionContext& instrCtx,
                    ref<Expr> address,
                    KInstruction *target = 0);
   
   void executeCall(ExecutionState &state,
-                   CurrentInstructionContext& instrCtx,
+                   InstructionContext& instrCtx,
                    KInstruction *ki,
                    llvm::Function *f,
                    std::vector< ref<Expr> > &arguments);
@@ -291,14 +273,14 @@ private:
   // do address resolution / object binding / out of bounds checking
   // and perform the operation
   void executeMemoryOperation(ExecutionState &state,
-                              CurrentInstructionContext& instrCtx,
+                              InstructionContext& instrCtx,
                               bool isWrite,
                               ref<Expr> address,
                               ref<Expr> value /* undef if read */,
                               KInstruction *target /* undef if write */);
 
   void executeMakeSymbolic(ExecutionState &state,
-                           CurrentInstructionContext& instrCtx,
+                           InstructionContext& instrCtx,
                            const MemoryObject *mo,
                            const std::string &name);
 
@@ -307,21 +289,21 @@ private:
   /// as one of the results. Note that the output vector may included
   /// NULL pointers for states which were unable to be created.
   void branch(ExecutionState &state,
-              CurrentInstructionContext& instrCtx,
+              InstructionContext& instrCtx,
               const std::vector< ref<Expr> > &conditions,
               std::vector<ExecutionState*> &result);
 
   // Fork current and return states in which condition holds / does
   // not hold, respectively. One of the states is necessarily the
   // current state, and one of the states may be null.
-  StatePair fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
+  StatePair fork(ExecutionState &current, InstructionContext& instrCtx,
                  ref<Expr> condition, bool isInternal);
 
   /// Add the given (boolean) condition as a constraint on state. This
   /// function is a wrapper around the state's addConstraint function
   /// which also manages propagation of implied values,
   /// validity checks, and seed patching.
-  void addConstraint(ExecutionState &state, ref<Expr> condition);
+  void addConstraint(ExecutionState &state, InstructionContext& instrCtx, ref<Expr> condition);
 
   // Called on [for now] concrete reads, replaces constant with a symbolic
   // Used for testing.
@@ -354,7 +336,8 @@ private:
   /// Return a unique constant value for the given expression in the
   /// given state, if it has one (i.e. it provably only has a single
   /// value). Otherwise return the original expression.
-  ref<Expr> toUnique(const ExecutionState &state, ref<Expr> &e);
+  ref<Expr> toUnique(const ExecutionState &state, InstructionContext& instrCtx, 
+                     ref<Expr> &e);
 
   /// Return a constant value for the given expression, forcing it to
   /// be constant in the given state by adding a constraint if
@@ -362,16 +345,16 @@ private:
   /// should generally be avoided.
   ///
   /// \param purpose An identify string to printed in case of concretization.
-  ref<klee::ConstantExpr> toConstant(ExecutionState &state, ref<Expr> e, 
-                                     const char *purpose);
+  ref<klee::ConstantExpr> toConstant(ExecutionState &state, InstructionContext& instrCtx, 
+                                     ref<Expr> e, const char *purpose);
 
   /// Bind a constant value for e to the given target. NOTE: This
   /// function may fork state if the state has multiple seeds.
-  void executeGetValue(ExecutionState &state, CurrentInstructionContext& instrCtx,
+  void executeGetValue(ExecutionState &state, InstructionContext& instrCtx,
       ref<Expr> e, KInstruction *target);
 
   /// Get textual information regarding a memory address.
-  std::string getAddressInfo(ExecutionState &state, ref<Expr> address) const;
+  std::string getAddressInfo(ExecutionState &state, InstructionContext& instrCtx, ref<Expr> address) const;
 
   // Determines the \param lastInstruction of the \param state which is not KLEE
   // internal and returns its InstructionInfo
@@ -380,17 +363,17 @@ private:
 
   // remove state from queue and delete
   void terminateState(ExecutionState &state,
-                      CurrentInstructionContext& instrCtx);
+                      InstructionContext& instrCtx);
   // call exit handler and terminate state
   void terminateStateEarly(ExecutionState &state,
-                           CurrentInstructionContext& instrCtx,
+                           InstructionContext& instrCtx,
                            const llvm::Twine &message);
   // call exit handler and terminate state
   void terminateStateOnExit(ExecutionState &state,
-                            CurrentInstructionContext& instrCtx);
+                            InstructionContext& instrCtx);
   // call error handler and terminate state
   void terminateStateOnError(ExecutionState &state, 
-                             CurrentInstructionContext& instrCtx,
+                             InstructionContext& instrCtx,
                              const llvm::Twine &message,
                              const char *suffix,
                              const llvm::Twine &longMessage="");
@@ -399,7 +382,7 @@ private:
   // (things that should not be possible, like illegal instruction or
   // unlowered instrinsic, or are unsupported, like inline assembly)
   void terminateStateOnExecError(ExecutionState &state, 
-                                 CurrentInstructionContext& instrCtx,
+                                 InstructionContext& instrCtx,
                                  const llvm::Twine &message,
                                  const llvm::Twine &info="") {
     terminateStateOnError(state, instrCtx, message, "exec.err", info);
@@ -431,7 +414,7 @@ private:
 
   void initTimers();
   void processTimers(ExecutionState *current,
-                     CurrentInstructionContext& instrCtx,
+                     InstructionContext& instrCtx,
                      double maxInstTime);
                 
 public:
@@ -496,7 +479,8 @@ public:
                                 std::string &res,
                                 Interpreter::LogType logFormat = Interpreter::STP);
 
-  virtual bool getSymbolicSolution(const ExecutionState &state, 
+  virtual bool getSymbolicSolution(const ExecutionState &state,
+                                   InstructionContext& instrCtx,
                                    std::vector< 
                                    std::pair<std::string,
                                    std::vector<unsigned char> > >

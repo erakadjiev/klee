@@ -626,10 +626,10 @@ void Executor::initializeGlobals(ExecutionState &state) {
 }
 
 void Executor::branch(ExecutionState &state,
-                      CurrentInstructionContext& instrCtx,
+                      InstructionContext& instrCtx,
                       const std::vector< ref<Expr> > &conditions,
                       std::vector<ExecutionState*> &result) {
-  TimerStatIncrementer timer(stats::forkTime);
+  TimerStatIncrementer timer(stats::forkTime, instrCtx);
   unsigned N = conditions.size();
   assert(N);
 
@@ -643,7 +643,7 @@ void Executor::branch(ExecutionState &state,
       }
     }
   } else {
-    stats::forks += N-1;
+    stats::forks.add(N-1, instrCtx);
 
     // XXX do proper balance or keep random?
     result.push_back(&state);
@@ -679,7 +679,7 @@ void Executor::branch(ExecutionState &state,
       for (i=0; i<N; ++i) {
         ref<ConstantExpr> res;
         bool success = 
-          solver->getValue(state, siit->assignment.evaluate(conditions[i]), 
+          solver->getValue(state, instrCtx, siit->assignment.evaluate(conditions[i]), 
                            res);
         assert(success && "FIXME: Unhandled solver failure");
         (void) success;
@@ -709,11 +709,11 @@ void Executor::branch(ExecutionState &state,
 
   for (unsigned i=0; i<N; ++i)
     if (result[i])
-      addConstraint(*result[i], conditions[i]);
+      addConstraint(*result[i], instrCtx, conditions[i]);
 }
 
 Executor::StatePair 
-Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
+Executor::fork(ExecutionState &current, InstructionContext& instrCtx,
                ref<Expr> condition, bool isInternal) {
   Solver::Validity res;
   std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it = 
@@ -727,22 +727,22 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
     StatisticManager &sm = *theStatisticManager;
     CallPathNode *cpn = current.stack.back().callPathNode;
     if ((MaxStaticForkPct<1. &&
-         sm.getIndexedValue(stats::forks, sm.getIndex()) > 
+         sm.getIndexedValue(stats::forks, instrCtx.statsIndex) > 
          stats::forks*MaxStaticForkPct) ||
         (MaxStaticCPForkPct<1. &&
          cpn && (cpn->statistics.getValue(stats::forks) > 
                  stats::forks*MaxStaticCPForkPct)) ||
         (MaxStaticSolvePct<1 &&
-         sm.getIndexedValue(stats::solverTime, sm.getIndex()) > 
+         sm.getIndexedValue(stats::solverTime, instrCtx.statsIndex) > 
          stats::solverTime*MaxStaticSolvePct) ||
         (MaxStaticCPForkPct<1. &&
          cpn && (cpn->statistics.getValue(stats::solverTime) > 
                  stats::solverTime*MaxStaticCPSolvePct))) {
       ref<ConstantExpr> value; 
-      bool success = solver->getValue(current, condition, value);
+      bool success = solver->getValue(current, instrCtx, condition, value);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
-      addConstraint(current, EqExpr::create(value, condition));
+      addConstraint(current, instrCtx, EqExpr::create(value, condition));
       condition = value;
     }
   }
@@ -751,7 +751,7 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
   if (isSeeding)
     timeout *= it->second.size();
   solver->setTimeout(timeout);
-  bool success = solver->evaluate(current, condition, res);
+  bool success = solver->evaluate(current, instrCtx, condition, res);
   solver->setTimeout(0);
   if (!success) {
     current.pc = current.prevPC;
@@ -773,10 +773,10 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
         // add constraints
         if(branch) {
           res = Solver::True;
-          addConstraint(current, condition);
+          addConstraint(current, instrCtx, condition);
         } else  {
           res = Solver::False;
-          addConstraint(current, Expr::createIsZero(condition));
+          addConstraint(current, instrCtx, Expr::createIsZero(condition));
         }
       }
     } else if (res==Solver::Unknown) {
@@ -796,12 +796,12 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
 	else 
 	  klee_warning_once(0, "skipping fork (max-forks reached)");
 
-        TimerStatIncrementer timer(stats::forkTime);
+        TimerStatIncrementer timer(stats::forkTime, instrCtx);
         if (theRNG.getBool()) {
-          addConstraint(current, condition);
+          addConstraint(current, instrCtx, condition);
           res = Solver::True;        
         } else {
-          addConstraint(current, Expr::createIsZero(condition));
+          addConstraint(current, instrCtx, Expr::createIsZero(condition));
           res = Solver::False;
         }
       }
@@ -819,7 +819,7 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
            siie = it->second.end(); siit != siie; ++siit) {
       ref<ConstantExpr> res;
       bool success = 
-        solver->getValue(current, siit->assignment.evaluate(condition), res);
+        solver->getValue(current, instrCtx, siit->assignment.evaluate(condition), res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res->isTrue()) {
@@ -834,7 +834,7 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
       assert(trueSeed || falseSeed);
       
       res = trueSeed ? Solver::True : Solver::False;
-      addConstraint(current, trueSeed ? condition : Expr::createIsZero(condition));
+      addConstraint(current, instrCtx, trueSeed ? condition : Expr::createIsZero(condition));
     }
   }
 
@@ -863,10 +863,10 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
 
     return StatePair(0, &current);
   } else {
-    TimerStatIncrementer timer(stats::forkTime);
+    TimerStatIncrementer timer(stats::forkTime, instrCtx);
     ExecutionState *falseState, *trueState = &current;
 
-    ++stats::forks;
+    stats::forks.increment(instrCtx);
 
     falseState = trueState->branch();
     instrCtx.addedStates.insert(falseState);
@@ -883,7 +883,7 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
              siie = seeds.end(); siit != siie; ++siit) {
         ref<ConstantExpr> res;
         bool success = 
-          solver->getValue(current, siit->assignment.evaluate(condition), res);
+          solver->getValue(current, instrCtx, siit->assignment.evaluate(condition), res);
         assert(success && "FIXME: Unhandled solver failure");
         (void) success;
         if (res->isTrue()) {
@@ -927,8 +927,8 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
       }
     }
 
-    addConstraint(*trueState, condition);
-    addConstraint(*falseState, Expr::createIsZero(condition));
+    addConstraint(*trueState, instrCtx, condition);
+    addConstraint(*falseState, instrCtx, Expr::createIsZero(condition));
 
     // Kinda gross, do we even really still want this option?
     if (MaxDepth && MaxDepth<=trueState->depth) {
@@ -941,7 +941,8 @@ Executor::fork(ExecutionState &current, CurrentInstructionContext& instrCtx,
   }
 }
 
-void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
+void Executor::addConstraint(ExecutionState &state, InstructionContext& instrCtx, 
+                             ref<Expr> condition) {
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(condition)) {
     if (!CE->isTrue())
       llvm::report_fatal_error("attempt to add invalid constraint");
@@ -957,11 +958,11 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
            siie = it->second.end(); siit != siie; ++siit) {
       bool res;
       bool success = 
-        solver->mustBeFalse(state, siit->assignment.evaluate(condition), res);
+        solver->mustBeFalse(state, instrCtx, siit->assignment.evaluate(condition), res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res) {
-        siit->patchSeed(state, condition, solver);
+        siit->patchSeed(state, instrCtx, condition, solver);
         warn = true;
       }
     }
@@ -1065,7 +1066,8 @@ void Executor::bindArgument(KFunction *kf, unsigned index,
   getArgumentCell(state, kf, index).value = value;
 }
 
-ref<Expr> Executor::toUnique(const ExecutionState &state, 
+ref<Expr> Executor::toUnique(const ExecutionState &state,
+                             InstructionContext& instrCtx,
                              ref<Expr> &e) {
   ref<Expr> result = e;
 
@@ -1074,8 +1076,8 @@ ref<Expr> Executor::toUnique(const ExecutionState &state,
     bool isTrue = false;
 
     solver->setTimeout(coreSolverTimeout);      
-    if (solver->getValue(state, e, value) &&
-        solver->mustBeTrue(state, EqExpr::create(e, value), isTrue) &&
+    if (solver->getValue(state, instrCtx, e, value) &&
+        solver->mustBeTrue(state, instrCtx, EqExpr::create(e, value), isTrue) &&
         isTrue)
       result = value;
     solver->setTimeout(0);
@@ -1088,7 +1090,8 @@ ref<Expr> Executor::toUnique(const ExecutionState &state,
 /* Concretize the given expression, and return a possible constant value. 
    'reason' is just a documentation string stating the reason for concretization. */
 ref<klee::ConstantExpr> 
-Executor::toConstant(ExecutionState &state, 
+Executor::toConstant(ExecutionState &state,
+                     InstructionContext& instrCtx,
                      ref<Expr> e,
                      const char *reason) {
   e = state.constraints.simplifyExpr(e);
@@ -1096,7 +1099,7 @@ Executor::toConstant(ExecutionState &state,
     return CE;
 
   ref<ConstantExpr> value;
-  bool success = solver->getValue(state, e, value);
+  bool success = solver->getValue(state, instrCtx, e, value);
   assert(success && "FIXME: Unhandled solver failure");
   (void) success;
 
@@ -1111,13 +1114,13 @@ Executor::toConstant(ExecutionState &state,
   else
     klee_warning_once(reason, "%s", os.str().c_str());
 
-  addConstraint(state, EqExpr::create(e, value));
+  addConstraint(state, instrCtx, EqExpr::create(e, value));
     
   return value;
 }
 
 void Executor::executeGetValue(ExecutionState &state,
-                               CurrentInstructionContext& instrCtx,
+                               InstructionContext& instrCtx,
                                ref<Expr> e,
                                KInstruction *target) {
   e = state.constraints.simplifyExpr(e);
@@ -1125,7 +1128,7 @@ void Executor::executeGetValue(ExecutionState &state,
     seedMap.find(&state);
   if (it==seedMap.end() || isa<ConstantExpr>(e)) {
     ref<ConstantExpr> value;
-    bool success = solver->getValue(state, e, value);
+    bool success = solver->getValue(state, instrCtx, e, value);
     assert(success && "FIXME: Unhandled solver failure");
     (void) success;
     bindLocal(target, state, value);
@@ -1135,7 +1138,7 @@ void Executor::executeGetValue(ExecutionState &state,
            siie = it->second.end(); siit != siie; ++siit) {
       ref<ConstantExpr> value;
       bool success = 
-        solver->getValue(state, siit->assignment.evaluate(e), value);
+        solver->getValue(state, instrCtx, siit->assignment.evaluate(e), value);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       values.insert(value);
@@ -1160,7 +1163,7 @@ void Executor::executeGetValue(ExecutionState &state,
   }
 }
 
-void Executor::stepInstruction(ExecutionState &state) {
+void Executor::stepInstruction(ExecutionState &state, InstructionContext& instrCtx) {
   if (DebugPrintInstructions) {
     printFileLine(state, state.pc);
     llvm::errs().indent(10) << stats::instructions << " ";
@@ -1168,9 +1171,9 @@ void Executor::stepInstruction(ExecutionState &state) {
   }
 
   if (statsTracker)
-    statsTracker->stepInstruction(state);
+    statsTracker->stepInstruction(state, instrCtx);
 
-  ++stats::instructions;
+  stats::instructions.increment(instrCtx);
   state.prevPC = state.pc;
   ++state.pc;
 
@@ -1179,7 +1182,7 @@ void Executor::stepInstruction(ExecutionState &state) {
 }
 
 void Executor::executeCall(ExecutionState &state,
-                           CurrentInstructionContext& instrCtx,
+                           InstructionContext& instrCtx,
                            KInstruction *ki,
                            Function *f,
                            std::vector< ref<Expr> > &arguments) {
@@ -1432,7 +1435,7 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
 }
 
 void Executor::executeInstruction(ExecutionState &state,
-                                  CurrentInstructionContext& instrCtx,
+                                  InstructionContext& instrCtx,
                                   KInstruction *ki) {
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
@@ -1542,7 +1545,7 @@ void Executor::executeInstruction(ExecutionState &state,
       // instruction (it reuses its statistic id). Should be cleaned
       // up with convenient instruction specific data.
       if (statsTracker && state.stack.back().kf->trackCoverage)
-        statsTracker->markBranchVisited(branches.first, branches.second);
+        statsTracker->markBranchVisited(instrCtx, branches.first, branches.second);
 
       if (branches.first)
         transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), *branches.first);
@@ -1556,7 +1559,7 @@ void Executor::executeInstruction(ExecutionState &state,
     ref<Expr> cond = eval(ki, 0, state).value;
     BasicBlock *bb = si->getParent();
 
-    cond = toUnique(state, cond);
+    cond = toUnique(state, instrCtx, cond);
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(cond)) {
       // Somewhat gross to create these all the time, but fine till we
       // switch to an internal rep.
@@ -1583,7 +1586,7 @@ void Executor::executeInstruction(ExecutionState &state,
         ref<Expr> match = EqExpr::create(cond, value);
         isDefault = AndExpr::create(isDefault, Expr::createIsZero(match));
         bool result;
-        bool success = solver->mayBeTrue(state, match, result);
+        bool success = solver->mayBeTrue(state, instrCtx, match, result);
         assert(success && "FIXME: Unhandled solver failure");
         (void) success;
         if (result) {
@@ -1600,7 +1603,7 @@ void Executor::executeInstruction(ExecutionState &state,
         }
       }
       bool res;
-      bool success = solver->mayBeTrue(state, isDefault, res);
+      bool success = solver->mayBeTrue(state, instrCtx, isDefault, res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res)
@@ -1713,7 +1716,7 @@ void Executor::executeInstruction(ExecutionState &state,
          handle it for us, albeit with some overhead. */
       do {
         ref<ConstantExpr> value;
-        bool success = solver->getValue(*free, v, value);
+        bool success = solver->getValue(*free, instrCtx, v, value);
         assert(success && "FIXME: Unhandled solver failure");
         (void) success;
         StatePair res = fork(*free, instrCtx, EqExpr::create(v, value), true);
@@ -2059,9 +2062,9 @@ void Executor::executeInstruction(ExecutionState &state,
     // Floating point instructions
 
   case Instruction::FAdd: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> left = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                         "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
+    ref<ConstantExpr> right = toConstant(state, instrCtx, eval(ki, 1, state).value,
                                          "floating point");
     if (!fpWidthToSemantics(left->getWidth()) ||
         !fpWidthToSemantics(right->getWidth()))
@@ -2079,9 +2082,9 @@ void Executor::executeInstruction(ExecutionState &state,
   }
 
   case Instruction::FSub: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> left = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                         "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
+    ref<ConstantExpr> right = toConstant(state, instrCtx, eval(ki, 1, state).value,
                                          "floating point");
     if (!fpWidthToSemantics(left->getWidth()) ||
         !fpWidthToSemantics(right->getWidth()))
@@ -2098,9 +2101,9 @@ void Executor::executeInstruction(ExecutionState &state,
   }
  
   case Instruction::FMul: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> left = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                         "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
+    ref<ConstantExpr> right = toConstant(state, instrCtx, eval(ki, 1, state).value,
                                          "floating point");
     if (!fpWidthToSemantics(left->getWidth()) ||
         !fpWidthToSemantics(right->getWidth()))
@@ -2118,9 +2121,9 @@ void Executor::executeInstruction(ExecutionState &state,
   }
 
   case Instruction::FDiv: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> left = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                         "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
+    ref<ConstantExpr> right = toConstant(state, instrCtx, eval(ki, 1, state).value,
                                          "floating point");
     if (!fpWidthToSemantics(left->getWidth()) ||
         !fpWidthToSemantics(right->getWidth()))
@@ -2138,9 +2141,9 @@ void Executor::executeInstruction(ExecutionState &state,
   }
 
   case Instruction::FRem: {
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> left = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                         "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
+    ref<ConstantExpr> right = toConstant(state, instrCtx, eval(ki, 1, state).value,
                                          "floating point");
     if (!fpWidthToSemantics(left->getWidth()) ||
         !fpWidthToSemantics(right->getWidth()))
@@ -2160,7 +2163,7 @@ void Executor::executeInstruction(ExecutionState &state,
   case Instruction::FPTrunc: {
     FPTruncInst *fi = cast<FPTruncInst>(i);
     Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> arg = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                        "floating point");
     if (!fpWidthToSemantics(arg->getWidth()) || resultType > arg->getWidth())
       return terminateStateOnExecError(state, instrCtx, "Unsupported FPTrunc operation");
@@ -2181,7 +2184,7 @@ void Executor::executeInstruction(ExecutionState &state,
   case Instruction::FPExt: {
     FPExtInst *fi = cast<FPExtInst>(i);
     Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> arg = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                         "floating point");
     if (!fpWidthToSemantics(arg->getWidth()) || arg->getWidth() > resultType)
       return terminateStateOnExecError(state, instrCtx, "Unsupported FPExt operation");
@@ -2201,7 +2204,7 @@ void Executor::executeInstruction(ExecutionState &state,
   case Instruction::FPToUI: {
     FPToUIInst *fi = cast<FPToUIInst>(i);
     Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> arg = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                        "floating point");
     if (!fpWidthToSemantics(arg->getWidth()) || resultType > 64)
       return terminateStateOnExecError(state, instrCtx, "Unsupported FPToUI operation");
@@ -2222,7 +2225,7 @@ void Executor::executeInstruction(ExecutionState &state,
   case Instruction::FPToSI: {
     FPToSIInst *fi = cast<FPToSIInst>(i);
     Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> arg = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                        "floating point");
     if (!fpWidthToSemantics(arg->getWidth()) || resultType > 64)
       return terminateStateOnExecError(state, instrCtx, "Unsupported FPToSI operation");
@@ -2243,7 +2246,7 @@ void Executor::executeInstruction(ExecutionState &state,
   case Instruction::UIToFP: {
     UIToFPInst *fi = cast<UIToFPInst>(i);
     Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> arg = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                        "floating point");
     const llvm::fltSemantics *semantics = fpWidthToSemantics(resultType);
     if (!semantics)
@@ -2259,7 +2262,7 @@ void Executor::executeInstruction(ExecutionState &state,
   case Instruction::SIToFP: {
     SIToFPInst *fi = cast<SIToFPInst>(i);
     Expr::Width resultType = getWidthForLLVMType(fi->getType());
-    ref<ConstantExpr> arg = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> arg = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                        "floating point");
     const llvm::fltSemantics *semantics = fpWidthToSemantics(resultType);
     if (!semantics)
@@ -2274,9 +2277,9 @@ void Executor::executeInstruction(ExecutionState &state,
 
   case Instruction::FCmp: {
     FCmpInst *fi = cast<FCmpInst>(i);
-    ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
+    ref<ConstantExpr> left = toConstant(state, instrCtx, eval(ki, 0, state).value,
                                         "floating point");
-    ref<ConstantExpr> right = toConstant(state, eval(ki, 1, state).value,
+    ref<ConstantExpr> right = toConstant(state, instrCtx, eval(ki, 1, state).value,
                                          "floating point");
     if (!fpWidthToSemantics(left->getWidth()) ||
         !fpWidthToSemantics(right->getWidth()))
@@ -2423,7 +2426,7 @@ void Executor::executeInstruction(ExecutionState &state,
 }
 
 void Executor::updateStates(ExecutionState *current,
-                            CurrentInstructionContext& instrCtx) {
+                            InstructionContext& instrCtx) {
   if (searcher) {
     searcher->update(current, instrCtx.addedStates, instrCtx.removedStates);
   }
@@ -2549,7 +2552,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
            ie = usingSeeds->end(); it != ie; ++it)
       v.push_back(SeedInfo(*it));
 
-    CurrentInstructionContext instrCtx;
+    InstructionContext instrCtx;
     int lastNumSeeds = usingSeeds->size()+10;
     double lastTime, startTime = lastTime = util::getWallTime();
     while ((!seedMap.empty() && !haltExecution) || runningFibers > 0) {
@@ -2569,7 +2572,7 @@ void Executor::runInFiber(ExecutionState &initialState) {
             unsigned numSeeds = it->second.size();
             ExecutionState &state = *lastState;
             KInstruction *ki = state.pc;
-            stepInstruction(state);
+            stepInstruction(state, instrCtx);
       
             executeInstruction(state, instrCtx, ki);
             processTimers(&state, instrCtx, MaxInstructionTime * numSeeds);
@@ -2658,13 +2661,13 @@ void Executor::runInFiber(ExecutionState &initialState) {
       ++runningFibers;
       boost::fibers::fiber(std::allocator_arg, boost::fibers::segmented_stack(), [&] () {
   
-        CurrentInstructionContext instrCtx;
+        InstructionContext instrCtx;
   
         while(!searcher->empty() && !haltExecution){
     //      std::cout << "In child fiber.\n";
           ExecutionState &state = searcher->selectState(instrCtx);
           KInstruction *ki = state.pc;
-          stepInstruction(state);
+          stepInstruction(state, instrCtx);
 
           executeInstruction(state, instrCtx, ki);
           processTimers(&state, instrCtx, MaxInstructionTime);
@@ -2717,7 +2720,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
     int lastNumSeeds = usingSeeds->size()+10;
     double lastTime, startTime = lastTime = util::getWallTime();
     ExecutionState *lastState = 0;
-    CurrentInstructionContext instrCtx;
+    InstructionContext instrCtx;
     while (!seedMap.empty()) {
       if (haltExecution){
         dumpStatesIfRequired();
@@ -2732,7 +2735,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
       unsigned numSeeds = it->second.size();
       ExecutionState &state = *lastState;
       KInstruction *ki = state.pc;
-      stepInstruction(state);
+      stepInstruction(state, instrCtx);
 
       executeInstruction(state, instrCtx, ki);
       processTimers(&state, instrCtx, MaxInstructionTime * numSeeds);
@@ -2800,12 +2803,12 @@ void Executor::runOrigTest(ExecutionState &initialState) {
 //    ++runningFibers;
 //    boost::fibers::fiber( [&] () {
 
-      CurrentInstructionContext instrCtx;
+      InstructionContext instrCtx;
 
       //      std::cout << "In child fiber.\n";
       ExecutionState &state = searcher->selectState(instrCtx);
       KInstruction *ki = state.pc;
-      stepInstruction(state);
+      stepInstruction(state, instrCtx);
       //      boost::this_fiber::yield();
       executeInstruction(state, instrCtx, ki);
       processTimers(&state, instrCtx, MaxInstructionTime);
@@ -2824,7 +2827,7 @@ void Executor::runOrigTest(ExecutionState &initialState) {
   dumpStatesIfRequired();
 }
 
-void Executor::checkMaxMemory(ExecutionState& current, CurrentInstructionContext& instrCtx){
+void Executor::checkMaxMemory(ExecutionState& current, InstructionContext& instrCtx){
   if (MaxMemory) {
     if ((stats::instructions & 0xFFFF) == 0) {
       // We need to avoid calling GetMallocUsage() often because it
@@ -2883,13 +2886,13 @@ void Executor::dumpStatesIfRequired(){
         ++runningFibers;
 
         boost::fibers::fiber(std::allocator_arg, boost::fibers::segmented_stack(), [&] () {
-          CurrentInstructionContext instrCtx;
+          InstructionContext instrCtx;
           
           for (std::set<ExecutionState*>::iterator
                  it = states.begin(), ie = states.end();
                it != ie; ++it) {
             ExecutionState &state = **it;
-            stepInstruction(state); // keep stats rolling
+            stepInstruction(state, instrCtx); // keep stats rolling
             terminateStateEarly(state, instrCtx, "Execution halting.");
           }
           
@@ -2912,7 +2915,7 @@ void Executor::runOriginal(ExecutionState &initialState) {
   // optimization and such.
   initTimers();
 
-  CurrentInstructionContext instrCtx;
+  InstructionContext instrCtx;
 
   states.insert(&initialState);
 
@@ -2937,7 +2940,7 @@ void Executor::runOriginal(ExecutionState &initialState) {
       unsigned numSeeds = it->second.size();
       ExecutionState &state = *lastState;
       KInstruction *ki = state.pc;
-      stepInstruction(state);
+      stepInstruction(state, instrCtx);
 
       executeInstruction(state, instrCtx, ki);
       processTimers(&state, instrCtx, MaxInstructionTime * numSeeds);
@@ -2987,7 +2990,7 @@ void Executor::runOriginal(ExecutionState &initialState) {
   while (!states.empty() && !haltExecution) {
     ExecutionState &state = searcher->selectState(instrCtx);
     KInstruction *ki = state.pc;
-    stepInstruction(state);
+    stepInstruction(state, instrCtx);
 
     executeInstruction(state, instrCtx, ki);
     processTimers(&state, instrCtx, MaxInstructionTime);
@@ -3041,14 +3044,15 @@ void Executor::runOriginal(ExecutionState &initialState) {
            it = states.begin(), ie = states.end();
          it != ie; ++it) {
       ExecutionState &state = **it;
-      stepInstruction(state); // keep stats rolling
+      stepInstruction(state, instrCtx); // keep stats rolling
       terminateStateEarly(state, instrCtx, "Execution halting.");
     }
     updateStates(0, instrCtx);
   }
 }
 
-std::string Executor::getAddressInfo(ExecutionState &state, 
+std::string Executor::getAddressInfo(ExecutionState &state,
+                                     InstructionContext& instrCtx,
                                      ref<Expr> address) const{
   std::string Str;
   llvm::raw_string_ostream info(Str);
@@ -3058,7 +3062,7 @@ std::string Executor::getAddressInfo(ExecutionState &state,
     example = CE->getZExtValue();
   } else {
     ref<ConstantExpr> value;
-    bool success = solver->getValue(state, address, value);
+    bool success = solver->getValue(state, instrCtx, address, value);
     assert(success && "FIXME: Unhandled solver failure");
     (void) success;
     example = value->getZExtValue();
@@ -3099,7 +3103,7 @@ std::string Executor::getAddressInfo(ExecutionState &state,
 }
 
 void Executor::terminateState(ExecutionState &state,
-                              CurrentInstructionContext& instrCtx) {
+                              InstructionContext& instrCtx) {
   if (replayOut && replayPosition!=replayOut->numObjects) {
     klee_warning_once(replayOut, 
                       "replay did not consume all objects in test input.");
@@ -3125,20 +3129,20 @@ void Executor::terminateState(ExecutionState &state,
 }
 
 void Executor::terminateStateEarly(ExecutionState &state, 
-                                   CurrentInstructionContext& instrCtx,
+                                   InstructionContext& instrCtx,
                                    const Twine &message) {
   if (!OnlyOutputStatesCoveringNew || state.coveredNew ||
       (AlwaysOutputSeeds && seedMap.count(&state)))
-    interpreterHandler->processTestCase(state, (message + "\n").str().c_str(),
+    interpreterHandler->processTestCase(state, instrCtx, (message + "\n").str().c_str(),
                                         "early");
   terminateState(state, instrCtx);
 }
 
 void Executor::terminateStateOnExit(ExecutionState &state,
-                                    CurrentInstructionContext& instrCtx) {
+                                    InstructionContext& instrCtx) {
   if (!OnlyOutputStatesCoveringNew || state.coveredNew || 
       (AlwaysOutputSeeds && seedMap.count(&state)))
-    interpreterHandler->processTestCase(state, 0, 0);
+    interpreterHandler->processTestCase(state, instrCtx, 0, 0);
   terminateState(state, instrCtx);
 }
 
@@ -3185,7 +3189,7 @@ const InstructionInfo & Executor::getLastNonKleeInternalInstruction(const Execut
   return *ii;
 }
 void Executor::terminateStateOnError(ExecutionState &state,
-                                     CurrentInstructionContext& instrCtx,
+                                     InstructionContext& instrCtx,
                                      const llvm::Twine &messaget,
                                      const char *suffix,
                                      const llvm::Twine &info) {
@@ -3219,7 +3223,7 @@ void Executor::terminateStateOnError(ExecutionState &state,
     if (info_str != "")
       msg << "Info: \n" << info_str;
 
-    interpreterHandler->processTestCase(state, msg.str().c_str(), suffix);
+    interpreterHandler->processTestCase(state, instrCtx, msg.str().c_str(), suffix);
   }
     
   terminateState(state, instrCtx);
@@ -3235,7 +3239,7 @@ static std::set<std::string> okExternals(okExternalsList,
                                          (sizeof(okExternalsList)/sizeof(okExternalsList[0])));
 
 void Executor::callExternalFunction(ExecutionState &state,
-                                    CurrentInstructionContext& instrCtx,
+                                    InstructionContext& instrCtx,
                                     KInstruction *target,
                                     Function *function,
                                     std::vector< ref<Expr> > &arguments) {
@@ -3261,13 +3265,13 @@ void Executor::callExternalFunction(ExecutionState &state,
        ae = arguments.end(); ai!=ae; ++ai) {
     if (AllowExternalSymCalls) { // don't bother checking uniqueness
       ref<ConstantExpr> ce;
-      bool success = solver->getValue(state, *ai, ce);
+      bool success = solver->getValue(state, instrCtx, *ai, ce);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       ce->toMemory(&args[wordIndex]);
       wordIndex += (ce->getWidth()+63)/64;
     } else {
-      ref<Expr> arg = toUnique(state, *ai);
+      ref<Expr> arg = toUnique(state, instrCtx, *ai);
       if (ConstantExpr *ce = dyn_cast<ConstantExpr>(arg)) {
         // XXX kick toMemory functions from here
         ce->toMemory(&args[wordIndex]);
@@ -3368,13 +3372,13 @@ ObjectState *Executor::bindObjectInState(ExecutionState &state,
 }
 
 void Executor::executeAlloc(ExecutionState &state,
-                            CurrentInstructionContext& instrCtx,
+                            InstructionContext& instrCtx,
                             ref<Expr> size,
                             bool isLocal,
                             KInstruction *target,
                             bool zeroMemory,
                             const ObjectState *reallocFrom) {
-  size = toUnique(state, size);
+  size = toUnique(state, instrCtx, size);
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(size)) {
     MemoryObject *mo = memory->allocate(CE->getZExtValue(), isLocal, false, 
                                         state.prevPC->inst);
@@ -3410,7 +3414,7 @@ void Executor::executeAlloc(ExecutionState &state,
     // collapses the size expression with a select.
 
     ref<ConstantExpr> example;
-    bool success = solver->getValue(state, size, example);
+    bool success = solver->getValue(state, instrCtx, size, example);
     assert(success && "FIXME: Unhandled solver failure");
     (void) success;
     
@@ -3419,7 +3423,7 @@ void Executor::executeAlloc(ExecutionState &state,
     while (example->Ugt(ConstantExpr::alloc(128, W))->isTrue()) {
       ref<ConstantExpr> tmp = example->LShr(ConstantExpr::alloc(1, W));
       bool res;
-      bool success = solver->mayBeTrue(state, EqExpr::create(tmp, size), res);
+      bool success = solver->mayBeTrue(state, instrCtx, EqExpr::create(tmp, size), res);
       assert(success && "FIXME: Unhandled solver failure");      
       (void) success;
       if (!res)
@@ -3432,11 +3436,11 @@ void Executor::executeAlloc(ExecutionState &state,
     if (fixedSize.second) { 
       // Check for exactly two values
       ref<ConstantExpr> tmp;
-      bool success = solver->getValue(*fixedSize.second, size, tmp);
+      bool success = solver->getValue(*fixedSize.second, instrCtx, size, tmp);
       assert(success && "FIXME: Unhandled solver failure");      
       (void) success;
       bool res;
-      success = solver->mustBeTrue(*fixedSize.second, 
+      success = solver->mustBeTrue(*fixedSize.second, instrCtx, 
                                    EqExpr::create(tmp, size),
                                    res);
       assert(success && "FIXME: Unhandled solver failure");      
@@ -3480,7 +3484,7 @@ void Executor::executeAlloc(ExecutionState &state,
 }
 
 void Executor::executeFree(ExecutionState &state,
-                           CurrentInstructionContext& instrCtx,
+                           InstructionContext& instrCtx,
                            ref<Expr> address,
                            KInstruction *target) {
   StatePair zeroPointer = fork(state, instrCtx, Expr::createIsZero(address), true);
@@ -3499,12 +3503,12 @@ void Executor::executeFree(ExecutionState &state,
         terminateStateOnError(*it->second, instrCtx,
                               "free of alloca", 
                               "free.err",
-                              getAddressInfo(*it->second, address));
+                              getAddressInfo(*it->second, instrCtx, address));
       } else if (mo->isGlobal) {
         terminateStateOnError(*it->second, instrCtx,
                               "free of global", 
                               "free.err",
-                              getAddressInfo(*it->second, address));
+                              getAddressInfo(*it->second, instrCtx, address));
       } else {
         it->second->addressSpace.unbindObject(mo);
         if (target)
@@ -3515,13 +3519,13 @@ void Executor::executeFree(ExecutionState &state,
 }
 
 void Executor::resolveExact(ExecutionState &state,
-                            CurrentInstructionContext& instrCtx,
+                            InstructionContext& instrCtx,
                             ref<Expr> p,
                             ExactResolutionList &results, 
                             const std::string &name) {
   // XXX we may want to be capping this?
   ResolutionList rl;
-  state.addressSpace.resolve(state, solver, p, rl);
+  state.addressSpace.resolve(state, instrCtx, solver, p, rl);
   
   ExecutionState *unbound = &state;
   for (ResolutionList::iterator it = rl.begin(), ie = rl.end(); 
@@ -3542,12 +3546,12 @@ void Executor::resolveExact(ExecutionState &state,
     terminateStateOnError(*unbound, instrCtx,
                           "memory error: invalid pointer: " + name,
                           "ptr.err",
-                          getAddressInfo(*unbound, p));
+                          getAddressInfo(*unbound, instrCtx, p));
   }
 }
 
 void Executor::executeMemoryOperation(ExecutionState &state,
-                                      CurrentInstructionContext& instrCtx,
+                                      InstructionContext& instrCtx,
                                       bool isWrite,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
@@ -3567,8 +3571,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
-  if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
-    address = toConstant(state, address, "resolveOne failure");
+  if (!state.addressSpace.resolveOne(state, instrCtx, solver, address, op, success)) {
+    address = toConstant(state, instrCtx, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
   }
   solver->setTimeout(0);
@@ -3577,14 +3581,14 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     const MemoryObject *mo = op.first;
 
     if (MaxSymArraySize && mo->size>=MaxSymArraySize) {
-      address = toConstant(state, address, "max-sym-array-size");
+      address = toConstant(state, instrCtx, address, "max-sym-array-size");
     }
     
     ref<Expr> offset = mo->getOffsetExpr(address);
 
     bool inBounds;
     solver->setTimeout(coreSolverTimeout);
-    bool success = solver->mustBeTrue(state, 
+    bool success = solver->mustBeTrue(state, instrCtx, 
                                       mo->getBoundsCheckOffset(offset, bytes),
                                       inBounds);
     solver->setTimeout(0);
@@ -3624,7 +3628,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   
   ResolutionList rl;  
   solver->setTimeout(coreSolverTimeout);
-  bool incomplete = state.addressSpace.resolve(state, solver, address, rl,
+  bool incomplete = state.addressSpace.resolve(state, instrCtx, solver, address, rl,
                                                0, coreSolverTimeout);
   solver->setTimeout(0);
   
@@ -3669,13 +3673,13 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       terminateStateOnError(*unbound, instrCtx,
                             "memory error: out of bound pointer",
                             "ptr.err",
-                            getAddressInfo(*unbound, address));
+                            getAddressInfo(*unbound, instrCtx, address));
     }
   }
 }
 
 void Executor::executeMakeSymbolic(ExecutionState &state, 
-                                   CurrentInstructionContext& instrCtx,
+                                   InstructionContext& instrCtx,
                                    const MemoryObject *mo,
                                    const std::string &name) {
   // Create a new object state for the memory object (instead of a copy).
@@ -3901,6 +3905,7 @@ void Executor::getConstraintLog(const ExecutionState &state, std::string &res,
 }
 
 bool Executor::getSymbolicSolution(const ExecutionState &state,
+                                   InstructionContext& instrCtx,
                                    std::vector< 
                                    std::pair<std::string,
                                    std::vector<unsigned char> > >
@@ -3915,7 +3920,7 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
         mo->cexPreferences.begin(), pie = mo->cexPreferences.end();
       for (; pi != pie; ++pi) {
         bool mustBeTrue;
-        bool success = solver->mustBeTrue(tmp, Expr::createIsZero(*pi), 
+        bool success = solver->mustBeTrue(tmp, instrCtx, Expr::createIsZero(*pi), 
                                           mustBeTrue);
         if (!success) break;
         if (!mustBeTrue) tmp.addConstraint(*pi);
@@ -3928,7 +3933,7 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
   std::vector<const Array*> objects;
   for (unsigned i = 0; i != state.symbolics.size(); ++i)
     objects.push_back(state.symbolics[i].second);
-  bool success = solver->getInitialValues(tmp, objects, values);
+  bool success = solver->getInitialValues(tmp, instrCtx, objects, values);
   solver->setTimeout(0);
   if (!success) {
     klee_warning("unable to compute initial values (invalid constraints?)!");

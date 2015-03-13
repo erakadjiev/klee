@@ -17,6 +17,7 @@
 
 namespace klee {
   class ExecutionState;
+  class InstructionContext;
   class MemoryObject;
   class ObjectState;
   class TimingSolver;
@@ -70,7 +71,8 @@ namespace klee {
     /// \param[out] result An ObjectPair this address can resolve to 
     ///               (when returning true).
     /// \return true iff an object was found at \a address.
-    bool resolveOne(ExecutionState &state, 
+    bool resolveOne(ExecutionState &state,
+                    InstructionContext& instrCtx,
                     TimingSolver *solver,
                     ref<Expr> address,
                     ObjectPair &result,
@@ -83,6 +85,7 @@ namespace klee {
     /// \return true iff the resolution is incomplete (maxResolutions
     /// is non-zero and the search terminated early, or a query timed out).
     bool resolve(ExecutionState &state,
+                 InstructionContext& instrCtx,
                  TimingSolver *solver,
                  ref<Expr> address, 
                  ResolutionList &rl, 

@@ -58,7 +58,8 @@ KTestObject *SeedInfo::getNextInput(const MemoryObject *mo,
   }
 }
 
-void SeedInfo::patchSeed(const ExecutionState &state, 
+void SeedInfo::patchSeed(const ExecutionState &state,
+                         InstructionContext& instrCtx,
                          ref<Expr> condition,
                          TimingSolver *solver) {
   std::vector< ref<Expr> > required(state.constraints.begin(),
@@ -97,12 +98,12 @@ void SeedInfo::patchSeed(const ExecutionState &state,
                                         ConstantExpr::alloc(it2->second[i], 
                                                             Expr::Int8));
       bool res;
-      bool success = solver->mustBeFalse(tmp, isSeed, res);
+      bool success = solver->mustBeFalse(tmp, instrCtx, isSeed, res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res) {
         ref<ConstantExpr> value;
-        bool success = solver->getValue(tmp, read, value);
+        bool success = solver->getValue(tmp, instrCtx, read, value);
         assert(success && "FIXME: Unhandled solver failure");            
         (void) success;
         it2->second[i] = value->getZExtValue(8);
@@ -116,7 +117,7 @@ void SeedInfo::patchSeed(const ExecutionState &state,
   }
 
   bool res;
-  bool success = solver->mayBeTrue(state, assignment.evaluate(condition), res);
+  bool success = solver->mayBeTrue(state, instrCtx, assignment.evaluate(condition), res);
   assert(success && "FIXME: Unhandled solver failure");
   (void) success;
   if (res)
@@ -134,12 +135,12 @@ void SeedInfo::patchSeed(const ExecutionState &state,
                                         ConstantExpr::alloc(it->second[i], 
                                                             Expr::Int8));
       bool res;
-      bool success = solver->mustBeFalse(tmp, isSeed, res);
+      bool success = solver->mustBeFalse(tmp, instrCtx, isSeed, res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res) {
         ref<ConstantExpr> value;
-        bool success = solver->getValue(tmp, read, value);
+        bool success = solver->getValue(tmp, instrCtx, read, value);
         assert(success && "FIXME: Unhandled solver failure");            
         (void) success;
         it->second[i] = value->getZExtValue(8);
@@ -156,7 +157,7 @@ void SeedInfo::patchSeed(const ExecutionState &state,
   {
     bool res;
     bool success = 
-      solver->mayBeTrue(state, assignment.evaluate(condition), res);
+      solver->mayBeTrue(state, instrCtx, assignment.evaluate(condition), res);
     assert(success && "FIXME: Unhandled solver failure");            
     (void) success;
     assert(res && "seed patching failed");

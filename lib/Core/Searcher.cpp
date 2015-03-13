@@ -65,7 +65,7 @@ Searcher::~Searcher() {
 
 ///
 
-ExecutionState &DFSSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &DFSSearcher::selectState(InstructionContext& instrCtx) {
   return *states.back();
 }
 
@@ -116,7 +116,7 @@ void DFSSearcher::removeState(ExecutionState *es){
 
 ///
 
-ExecutionState &BFSSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &BFSSearcher::selectState(InstructionContext& instrCtx) {
   return *states.front();
 }
 
@@ -167,7 +167,7 @@ void BFSSearcher::removeState(ExecutionState *es){
 
 ///
 
-ExecutionState &RandomSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &RandomSearcher::selectState(InstructionContext& instrCtx) {
   return *states[theRNG.getInt32()%states.size()];
 }
 
@@ -222,7 +222,7 @@ WeightedRandomSearcher::~WeightedRandomSearcher() {
   delete states;
 }
 
-ExecutionState &WeightedRandomSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &WeightedRandomSearcher::selectState(InstructionContext& instrCtx) {
   return *states->choose(theRNG.getDoubleL());
 }
 
@@ -294,7 +294,7 @@ RandomPathSearcher::RandomPathSearcher(Executor &_executor)
 RandomPathSearcher::~RandomPathSearcher() {
 }
 
-ExecutionState &RandomPathSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &RandomPathSearcher::selectState(InstructionContext& instrCtx) {
   unsigned flips=0, bits=0;
   PTree::Node *n = executor.processTree->root;
   
@@ -340,7 +340,7 @@ ConcurrentRandomPathSearcher::ConcurrentRandomPathSearcher(Executor &_executor)
 ConcurrentRandomPathSearcher::~ConcurrentRandomPathSearcher() {
 }
 
-ExecutionState &ConcurrentRandomPathSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &ConcurrentRandomPathSearcher::selectState(InstructionContext& instrCtx) {
   unsigned flips=0, bits=0;
   PTree* ptree = executor.processTree;
   PTree::Node *n = ptree->root;
@@ -419,7 +419,7 @@ Instruction *BumpMergingSearcher::getMergePoint(ExecutionState &es) {
   return 0;
 }
 
-ExecutionState &BumpMergingSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &BumpMergingSearcher::selectState(InstructionContext& instrCtx) {
 entry:
   // out of base states, pick one to pop
   if (baseSearcher->empty()) {
@@ -503,7 +503,7 @@ Instruction *MergingSearcher::getMergePoint(ExecutionState &es) {
   return 0;
 }
 
-ExecutionState &MergingSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &MergingSearcher::selectState(InstructionContext& instrCtx) {
   while (!baseSearcher->empty()) {
     ExecutionState &es = baseSearcher->selectState(instrCtx);
     if (getMergePoint(es)) {
@@ -629,7 +629,7 @@ BatchingSearcher::~BatchingSearcher() {
   delete baseSearcher;
 }
 
-ExecutionState &BatchingSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &BatchingSearcher::selectState(InstructionContext& instrCtx) {
   if (!lastState || 
       (util::getWallTime()-lastStartTime)>timeBudget ||
       (stats::instructions-lastStartInstructions)>instructionBudget) {
@@ -682,7 +682,7 @@ ConcurrentBatchingSearcher::~ConcurrentBatchingSearcher() {
   delete baseSearcher;
 }
 
-ExecutionState &ConcurrentBatchingSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &ConcurrentBatchingSearcher::selectState(InstructionContext& instrCtx) {
   auto it = idleStates.find(lastState);
   std::pair<ExecutionState*, BatchInfo> batchState;
   if(it != idleStates.end()){
@@ -750,7 +750,7 @@ IterativeDeepeningTimeSearcher::~IterativeDeepeningTimeSearcher() {
   delete baseSearcher;
 }
 
-ExecutionState &IterativeDeepeningTimeSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &IterativeDeepeningTimeSearcher::selectState(InstructionContext& instrCtx) {
   ExecutionState &res = baseSearcher->selectState(instrCtx);
   startTime = util::getWallTime();
   return res;
@@ -807,7 +807,7 @@ StateRemovingSearcher::~StateRemovingSearcher() {
   delete baseSearcher;
 }
 
-ExecutionState &StateRemovingSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &StateRemovingSearcher::selectState(InstructionContext& instrCtx) {
   ExecutionState& s = baseSearcher->selectState(instrCtx);
   baseSearcher->removeState(&s);
   return s;
@@ -841,7 +841,7 @@ InterleavedSearcher::~InterleavedSearcher() {
     delete *it;
 }
 
-ExecutionState &InterleavedSearcher::selectState(CurrentInstructionContext& instrCtx) {
+ExecutionState &InterleavedSearcher::selectState(InstructionContext& instrCtx) {
   Searcher *s = searchers[--index];
   if (index==0) index = searchers.size();
   return s->selectState(instrCtx);
