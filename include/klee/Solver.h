@@ -253,6 +253,15 @@ namespace klee {
       virtual void setCoreSolverTimeout(double timeout);
   };
 
+  class DistributedBinarySolver: public Solver {
+    public:
+      DistributedBinarySolver(std::string pathToSolver);
+      virtual ~DistributedBinarySolver();
+
+      virtual char* getConstraintLog(const Query&);
+      virtual void setCoreSolverTimeout(double timeout);
+  };
+
   /* *** */
 
   /// createValidatingSolver - Create a solver which will validate all query

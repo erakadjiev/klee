@@ -625,7 +625,7 @@ fi
 
 dnl **************************************************************************
 dnl User option to enable distributed constraint solvers and to specify the 
-dnl the location of the czmq and boost root directory
+dnl the location of the czmq, boost and cap'n proto root directory
 dnl **************************************************************************
 
 dnl ***** CZMQ *****
@@ -660,6 +660,42 @@ else
   AC_DEFINE(SUPPORT_CZMQ, 1, [Supporting czmq API])
   AC_SUBST(ENABLE_CZMQ,[[1]])
   AC_SUBST(CZMQ_ROOT,$czmq_root)
+fi
+
+dnl ***** Cap n Proto *****
+
+AC_ARG_WITH(capnp,
+  AS_HELP_STRING([--with-capnp],
+    [Location of Cap n Proto installation directory]),,with_capnp="no")
+
+if test X$with_capnp = Xno ; then
+  AC_SUBST(ENABLE_CAPNP,[[0]])
+else
+  AC_SUBST(KLEE_USE_CXX11,[[1]])
+  if test X$with_capnp = X -o X$with_capnp = Xyes; then
+    with_capnp="/usr/local"
+  fi
+  capnp_root=`cd $with_capnp 2> /dev/null; pwd`
+
+  AC_LANG_PUSH([C++])
+  old_CPPFLAGS="$CPPFLAGS"
+  old_LDFLAGS="$LDFLAGS"  
+  CPPFLAGS="$CPPFLAGS -std=c++11 -I$capnp_root/include"
+  LDFLAGS="$LDFLAGS -L$capnp_root/lib -lcapnp"
+  AC_CHECK_HEADER([$capnp_root/include/capnp/message.h],,
+    [
+        AC_MSG_ERROR([Unable to use $capnp_root/include/capnp/message.h header])
+    ])
+  AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM([#include $capnp_root/include/capnp/message.h], [capnp::MallocMessageBuilder message])],
+      [],[AC_MSG_CHECKING([for MallocMessageBuilder() in -lcapnp])],[AC_MSG_ERROR([Unable to link with libcapnp])])  
+  CPPFLAGS="$old_CPPFLAGS"
+  LDFLAGS="$old_LDFLAGS"
+  AC_LANG_POP([C++])
+
+  AC_DEFINE(SUPPORT_CAPNP, 1, [Supporting Cap n Proto API])
+  AC_SUBST(ENABLE_CAPNP,[[1]])
+  AC_SUBST(CAPNP_ROOT,$capnp_root)
 fi
 
 dnl ***** Boost *****

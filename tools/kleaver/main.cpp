@@ -45,7 +45,7 @@ using namespace klee::expr;
 #ifdef SUPPORT_METASMT
 
 #include <metaSMT/DirectSolver_Context.hpp>
-#include <metaSMT/backend/Z3_Backend.hpp>
+//#include <metaSMT/backend/Z3_Backend.hpp>
 #include <metaSMT/backend/Boolector.hpp>
 
 #define Expr VCExpr
@@ -243,10 +243,10 @@ static bool EvaluateInputAST(const char *Filename,
               backend = "STP"; 
               coreSolver = new MetaSMTSolver< DirectSolver_Context < STP_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
               break;
-          case METASMT_BACKEND_Z3:
-              backend = "Z3";
-              coreSolver = new MetaSMTSolver< DirectSolver_Context < Z3_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
-              break;
+//          case METASMT_BACKEND_Z3:
+//              backend = "Z3";
+//              coreSolver = new MetaSMTSolver< DirectSolver_Context < Z3_Backend > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
+//              break;
           case METASMT_BACKEND_BOOLECTOR:
               backend = "Boolector";
               coreSolver = new MetaSMTSolver< DirectSolver_Context < Boolector > >(UseForkedCoreSolver, CoreSolverOptimizeDivides);
@@ -261,7 +261,8 @@ static bool EvaluateInputAST(const char *Filename,
     coreSolver = UseDummySolver ? createDummySolver() : new STPSolver(UseForkedCoreSolver);
   }
 #else
-  coreSolver = UseDummySolver ? createDummySolver() : new STPSolver(UseForkedCoreSolver);
+//  coreSolver = UseDummySolver ? createDummySolver() : new STPSolver(UseForkedCoreSolver);
+  coreSolver = UseDummySolver ? createDummySolver() : new DistributedBinarySolver("");;
 #endif /* SUPPORT_METASMT */
   
   

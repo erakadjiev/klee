@@ -626,6 +626,8 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 BOOST_ROOT
 ENABLE_BOOST
+CAPNP_ROOT
+ENABLE_CAPNP
 CZMQ_ROOT
 ENABLE_CZMQ
 METASMT_ROOT
@@ -736,6 +738,7 @@ with_runtime
 with_stp
 with_metasmt
 with_czmq
+with_capnp
 with_boost
 '
       ac_precious_vars='build_alias
@@ -1390,6 +1393,7 @@ Optional Packages:
   --with-stp              Location of STP installation directory
   --with-metasmt          Location of metaSMT installation directory
   --with-czmq             Location of czmq installation directory
+  --with-capnp            Location of Cap n Proto installation directory
   --with-boost            Location of boost installation directory
 
 Some influential environment variables:
@@ -5297,6 +5301,85 @@ fi
 
 
 
+# Check whether --with-capnp was given.
+if test "${with_capnp+set}" = set; then :
+  withval=$with_capnp;
+else
+  with_capnp="no"
+fi
+
+
+if test X$with_capnp = Xno ; then
+  ENABLE_CAPNP=0
+
+else
+  KLEE_USE_CXX11=1
+
+  if test X$with_capnp = X -o X$with_capnp = Xyes; then
+    with_capnp="/usr/local"
+  fi
+  capnp_root=`cd $with_capnp 2> /dev/null; pwd`
+
+  ac_ext=cpp
+ac_cpp='$CXXCPP $CPPFLAGS'
+ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CXX -o conftest$ac_exeext $CXXFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
+
+  old_CPPFLAGS="$CPPFLAGS"
+  old_LDFLAGS="$LDFLAGS"
+  CPPFLAGS="$CPPFLAGS -std=c++11 -I$capnp_root/include"
+  LDFLAGS="$LDFLAGS -L$capnp_root/lib -lcapnp"
+  as_ac_Header=`$as_echo "ac_cv_header_$capnp_root/include/capnp/message.h" | $as_tr_sh`
+ac_fn_cxx_check_header_mongrel "$LINENO" "$capnp_root/include/capnp/message.h" "$as_ac_Header" "$ac_includes_default"
+if eval test \"x\$"$as_ac_Header"\" = x"yes"; then :
+
+else
+
+        as_fn_error $? "Unable to use $capnp_root/include/capnp/message.h header" "$LINENO" 5
+
+fi
+
+
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include $capnp_root/include/capnp/message.h
+int
+main ()
+{
+capnp::MallocMessageBuilder message
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_link "$LINENO"; then :
+
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for MallocMessageBuilder() in -lcapnp" >&5
+$as_echo_n "checking for MallocMessageBuilder() in -lcapnp... " >&6; }
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+  CPPFLAGS="$old_CPPFLAGS"
+  LDFLAGS="$old_LDFLAGS"
+  ac_ext=cpp
+ac_cpp='$CXXCPP $CPPFLAGS'
+ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CXX -o conftest$ac_exeext $CXXFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
+
+
+
+$as_echo "#define SUPPORT_CAPNP 1" >>confdefs.h
+
+  ENABLE_CAPNP=1
+
+  CAPNP_ROOT=$capnp_root
+
+fi
+
+
+
 # Check whether --with-boost was given.
 if test "${with_boost+set}" = set; then :
   withval=$with_boost;
@@ -6693,6 +6776,7 @@ ac_clean_files=$ac_clean_files_save
 
 test $ac_write_fail = 0 ||
   as_fn_error $? "write failure creating $CONFIG_STATUS" "$LINENO" 5
+
 
 # configure is writing to config.log, and then calls config.status.
 # config.status does its own redirection, appending to config.log.

@@ -30,3 +30,11 @@ ifeq ($(ENABLE_BOOST),1)
   C.Flags += -fsplit-stack -DBOOST_USE_SEGMENTED_STACKS
   CXX.Flags += -fsplit-stack -DBOOST_USE_SEGMENTED_STACKS
 endif
+
+ifeq ($(ENABLE_CAPNP),1)
+  include /home/rakadjiev/workspace/metaSMT/build/root/share/metaSMT/metaSMT.makefile
+  CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags))
+  CXX.Flags := $(filter-out -fno-rtti,$(CXX.Flags))
+  CXX.Flags += $(metaSMT_CXXFLAGS)
+  CXX.Flags += $(metaSMT_INCLUDES)
+endif

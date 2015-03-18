@@ -15,3 +15,7 @@ BUILD_ARCHIVE=1
 NO_INSTALL=1
 
 include $(LEVEL)/Makefile.common
+
+ifeq ($(ENABLE_CAPNP),1)
+  CXX.Flags := $(filter-out -fno-rtti,$(CXX.Flags))
+endif

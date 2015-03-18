@@ -93,6 +93,9 @@
 /* Supporting Boost */
 #undef SUPPORT_BOOST
 
+/* Supporting Cap n Proto API */
+#undef SUPPORT_CAPNP
+
 /* Supporting czmq API */
 #undef SUPPORT_CZMQ
 

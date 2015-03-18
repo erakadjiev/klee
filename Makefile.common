@@ -67,6 +67,17 @@ ifeq ($(ENABLE_CZMQ),1)
   CXX.Flags += -I$(CZMQ_ROOT)/include
 endif
 
+# For Cap'n Proto
+ifeq ($(ENABLE_CAPNP),1)
+  LD.Flags += -L$(CAPNP_ROOT)/lib -L$(BOOST_ROOT)/lib
+  CXX.Flags += -I$(CAPNP_ROOT)/include -I$(BOOST_ROOT)/include
+  include /home/rakadjiev/workspace/metaSMT/build/root/share/metaSMT/metaSMT.makefile
+  LD.Flags += -L/home/rakadjiev/workspace/metaSMT/build/root/lib
+  CXX.Flags += -D __STDC_LIMIT_MACROS -D __STDC_FORMAT_MACROS
+  CXX.Flags := $(filter-out -fno-exceptions,$(CXX.Flags))
+  CXX.Flags += $(metaSMT_INCLUDES)
+endif
+
 # For Boost
 ifeq ($(ENABLE_BOOST),1)
   # LLVM < 3.4 doesn't support split stacks

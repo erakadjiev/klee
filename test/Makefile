@@ -24,7 +24,7 @@ include Makefile.tests
 ULIMIT = ulimit -t 600 ; ulimit -d 512000 ;
 
 ifdef VERBOSE
-LIT_ARGS := -v
+LIT_ARGS := -v -j1
 else
 LIT_ARGS := -s -v
 endif
