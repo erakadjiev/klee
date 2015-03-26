@@ -32,6 +32,7 @@
 #include "llvm/Support/CommandLine.h"
 
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 //#include <signal.h>
@@ -108,7 +109,7 @@ namespace klee {
   // ------------------------------------- SMTLIBSolverImpl methods ----------------------------------------
   
   SMTLIBSolverImpl::SMTLIBSolverImpl(const string _solverAddress) :
-          timeout(0.0), _runStatusCode(SOLVER_RUN_STATUS_FAILURE), solverPath(_solverAddress), IgnoreSolverFailures(false) {
+          timeout(0.0), _runStatusCode(SOLVER_RUN_STATUS_FAILURE), solverPath(_solverAddress), IgnoreSolverFailures(false), avg(0), cnt(0), max(0) {
     // FIXME there should be an initial run status code (e.g. _UNKNOWN or _RUNNING)
     printer = new ExprSMTLIBPrinter();
     printer->setLogic(ExprSMTLIBPrinter::QF_AUFBV);
@@ -240,11 +241,26 @@ namespace klee {
       
       int query_length = query.length();
       
+      int fd = open("tmpfile.capnp", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+      if(fd==-1)
+        std::cerr << "Error:" << errno << "\n";
+      int bytes_w = write(fd, query.c_str(), query_length);
+      close(fd);
+      struct stat stat_buf;
+      int rc = stat("tmpfile.capnp", &stat_buf);
+      unsigned long query_size = stat_buf.st_size;
+      remove("tmpfile.capnp");
+      
       ++cnt;
-      avg = (query_length + ((cnt-1) * avg)) / cnt;
-      if(query_length > max){
-        max = query_length;
+      avg = (query_size + ((cnt-1) * avg)) / cnt;
+      if(query_size > max){
+        max = query_size;
       }
+//      ++cnt;
+//      avg = (query_length + ((cnt-1) * avg)) / cnt;
+//      if(query_length > max){
+//        max = query_length;
+//      }
       
       ++query_length;
       

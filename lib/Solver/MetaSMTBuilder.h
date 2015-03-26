@@ -34,6 +34,9 @@
 #include <boost/mpl/vector.hpp>
 #include <boost/format.hpp>
 
+//remove
+#include <iostream>
+
 using namespace metaSMT;
 using namespace metaSMT::logic::QF_BV;
 
@@ -620,13 +623,15 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 
     switch (e->getKind()) {
 
-        case Expr::Constant:
-        {
+        case Expr::Constant: {
+//std::cerr << "Constant" << "\n";
             ConstantExpr *coe = cast<ConstantExpr>(e);
             assert(coe);
             unsigned coe_width = coe->getWidth();
             *width_out = coe_width;
 
+            //std::cerr << "C: " << coe->getZExtValue(64) << "\n";
+            
             // Coerce to bool if necessary.
             if (coe_width == 1) {
                 res = (coe->isTrue()) ? getTrue() : getFalse();
@@ -647,20 +652,27 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
                                     concat(bvConst64(min_width, tmp->Extract(0, min_width)->getZExtValue()),
                                            res));
                  }
+                 const uint64_t* val = coe->getAPValue().getRawData();
+                 uint32_t numWords = coe->getAPValue().getNumWords();
+                   std::cerr << "Words: ";
+                   for(unsigned i = 0; i < numWords; ++i){
+                     std::cerr << val[i] << " ";
+                   }
+                   std::cerr << "\n";
             }
             break;
         }
 
-        case Expr::NotOptimized:
-        { 
+        case Expr::NotOptimized: {
+//std::cerr << "NotOptimized" << "\n"; 
             NotOptimizedExpr *noe = cast<NotOptimizedExpr>(e);
             assert(noe);
             res = construct(noe->src, width_out);
             break;
         }
 	
-        case Expr::Select: 
-        {
+        case Expr::Select: {
+//std::cerr << "Select" << "\n";
             SelectExpr *se = cast<SelectExpr>(e);
             assert(se);
             res = evaluate(_solver, 
@@ -670,8 +682,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;
         }
 
-        case Expr::Read:
-        {
+        case Expr::Read: {
+//std::cerr << "Read" << "\n";
             ReadExpr *re = cast<ReadExpr>(e);
             assert(re && re->updates.root);
             *width_out = re->updates.root->getRange();
@@ -683,8 +695,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;
         }
 
-        case Expr::Concat:
-        {
+        case Expr::Concat: {
+//std::cerr << "Concat" << "\n";
             ConcatExpr *ce = cast<ConcatExpr>(e);
             assert(ce);
             *width_out = ce->getWidth();
@@ -699,8 +711,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;
         }
 
-        case Expr::Extract:
-        {
+        case Expr::Extract: {
+//std::cerr << "Extract" << "\n";
             ExtractExpr *ee = cast<ExtractExpr>(e);
             assert(ee);
             // ToDo spare evaluate?
@@ -719,8 +731,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;
         }
 
-        case Expr::ZExt:
-        {
+        case Expr::ZExt: {
+//std::cerr << "ZExt" << "\n";
             CastExpr *ce = cast<CastExpr>(e);
             assert(ce);
 
@@ -747,17 +759,19 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;	  
         }
   
-        case Expr::SExt:
-        {
+        case Expr::SExt: {
+//std::cerr << "SExt" << "\n";
             CastExpr *ce = cast<CastExpr>(e);
             assert(ce);
     
+            //std::cerr << "SExt " << ce->src->getKind() << " " << ce->src->getWidth() << "\n";
             int child_width = 0;
             typename SolverContext::result_type child = evaluate(_solver, construct(ce->src, &child_width));
             
             unsigned ce_width = ce->getWidth();
             *width_out = ce_width;
     
+            
             if (child_width == 1) {
                 res = evaluate(_solver, 
                                metaSMT::logic::Ite(child, bvMinusOne(ce_width), bvZero(ce_width)));
@@ -770,17 +784,18 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;
         }
   
-        case Expr::Add:
-        {
+        case Expr::Add: {
+//std::cerr << "Add" << "\n";
             AddExpr *ae = cast<AddExpr>(e);
-            assert(ae);	    
+            assert(ae);	   
+            //std::cerr << "Add: " << ae->left->getKind() << " " << ae->right->getKind() << "\n";
             res = evaluate(_solver, bvadd(construct(ae->left, width_out), construct(ae->right, width_out)));
             assert(*width_out != 1 && "uncanonicalized add");
             break;	  
         }  
   
-        case Expr::Sub:  
-        {
+        case Expr::Sub: {
+//std::cerr << "Sub" << "\n";
             SubExpr *se = cast<SubExpr>(e);
             assert(se);	    
             res = evaluate(_solver, bvsub(construct(se->left, width_out), construct(se->right, width_out))); 
@@ -788,8 +803,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;	  
         }  
    
-        case Expr::Mul:
-        { 
+        case Expr::Mul: {
+//std::cerr << "Mul" << "\n"; 
             MulExpr *me = cast<MulExpr>(e);
             assert(me);
     
@@ -806,8 +821,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;
         }
 
-        case Expr::UDiv:
-        {
+        case Expr::UDiv: {
+//std::cerr << "UDiv" << "\n";
             UDivExpr *de = cast<UDivExpr>(e);
             assert(de);
 
@@ -836,8 +851,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;
         }
 
-        case Expr::SDiv:
-        {
+        case Expr::SDiv: {
+//std::cerr << "SDiv" << "\n";
             SDivExpr *de = cast<SDivExpr>(e);
             assert(de);
 
@@ -854,8 +869,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;
         }
 
-        case Expr::URem:
-        {
+        case Expr::URem: {
+//std::cerr << "URem" << "\n";
             URemExpr *de = cast<URemExpr>(e);
             assert(de);
 
@@ -899,8 +914,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;  
         }
 
-        case Expr::SRem:
-        {
+        case Expr::SRem: {
+//std::cerr << "SRem" << "\n";
             SRemExpr *de = cast<SRemExpr>(e);
             assert(de);
     
@@ -934,8 +949,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;
         }
 
-        case Expr::Not:
-        {
+        case Expr::Not: {
+//std::cerr << "Not" << "\n";
             NotExpr *ne = cast<NotExpr>(e);
             assert(ne);
     
@@ -949,8 +964,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
             break;	  
         }
   
-        case Expr::And:
-        {
+        case Expr::And: {
+//std::cerr << "And" << "\n";
             AndExpr *ae = cast<AndExpr>(e);
 	    assert(ae);
 	    
@@ -967,8 +982,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	    break;	  
 	}
 	  
-	case Expr::Or:
-	{
+	case Expr::Or: {
+//std::cerr << "Or" << "\n";
 	    OrExpr *oe = cast<OrExpr>(e);
 	    assert(oe);
 	    
@@ -985,8 +1000,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	    break;	  
 	}
 	  
-	case Expr::Xor:
-	{
+	case Expr::Xor: {
+//std::cerr << "Xor" << "\n";
 	    XorExpr *xe = cast<XorExpr>(e);
 	    assert(xe);
 	    
@@ -1003,8 +1018,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	    break;	  
 	}
 	  
-	case Expr::Shl:  
-	{	    
+	case Expr::Shl: {
+//std::cerr << "Shl" << "\n";	    
 	    ShlExpr *se = cast<ShlExpr>(e);
 	    assert(se);
 	    
@@ -1024,8 +1039,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	    break;	  
 	}
 	
-	case Expr::LShr:
-	{
+	case Expr::LShr: {
+//std::cerr << "LShr" << "\n";
 	    LShrExpr *lse = cast<LShrExpr>(e);
 	    assert(lse);
 	    
@@ -1045,8 +1060,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	    break;	  
 	}
 	  
-	case Expr::AShr:  
-	{
+	case Expr::AShr: {
+//std::cerr << "AShr" << "\n";
 	    AShrExpr *ase = cast<AShrExpr>(e);
 	    assert(ase);
 	    
@@ -1068,8 +1083,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	    break;	  
 	}
 	  
-	case Expr::Eq: 
-	{
+	case Expr::Eq: {
+//std::cerr << "Eq" << "\n";
 	     EqExpr *ee = cast<EqExpr>(e);
 	     assert(ee);
 	     
@@ -1097,8 +1112,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	     break;
 	}
 	
-	case Expr::Ult:
-	{
+	case Expr::Ult: {
+//std::cerr << "Ult" << "\n";
 	    UltExpr *ue = cast<UltExpr>(e);
 	    assert(ue);
 	    
@@ -1112,8 +1127,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	    break;	  
 	}
 	  
-	case Expr::Ule:
-	{
+	case Expr::Ule: {
+//std::cerr << "Ule" << "\n";
 	    UleExpr *ue = cast<UleExpr>(e);
 	    assert(ue);
 	    
@@ -1127,8 +1142,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	    break;	  
 	}
 	  
-	case Expr::Slt:
-	{
+	case Expr::Slt: {
+//std::cerr << "Slt" << "\n";
 	    SltExpr *se = cast<SltExpr>(e);
 	    assert(se);
 	    
@@ -1142,8 +1157,8 @@ typename SolverContext::result_type MetaSMTBuilder<SolverContext>::constructActu
 	    break;	  
 	}
 	  
-        case Expr::Sle:
-        {
+        case Expr::Sle: {
+//std::cerr << "Sle" << "\n";
             SleExpr *se = cast<SleExpr>(e);
             assert(se);
     

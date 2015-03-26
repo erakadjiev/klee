@@ -39,6 +39,14 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include "klee/util/ExprSMTLIBPrinter.h"
+
+//remove
+#include <iostream>
+#include <cstdio>
 
 llvm::cl::opt<bool>
 IgnoreSolverFailures("ignore-solver-failures",
@@ -52,7 +60,7 @@ using namespace klee;
 #ifdef SUPPORT_METASMT
 
 #include <metaSMT/DirectSolver_Context.hpp>
-#include <metaSMT/backend/Z3_Backend.hpp>
+//#include <metaSMT/backend/Z3_Backend.hpp>
 #include <metaSMT/backend/Boolector.hpp>
 #include <metaSMT/backend/MiniSAT.hpp>
 #include <metaSMT/support/run_algorithm.hpp>
@@ -773,13 +781,19 @@ static SolverImpl::SolverRunStatus runAndGetCexForked(::VC vc,
     if (hasSolution) {
       values = std::vector< std::vector<unsigned char> >(objects.size());
       unsigned i=0;
+    //std::cerr << "start\n";
       for (std::vector<const Array*>::const_iterator
              it = objects.begin(), ie = objects.end(); it != ie; ++it) {
         const Array *array = *it;
         std::vector<unsigned char> &data = values[i++];
         data.insert(data.begin(), pos, pos + array->size);
+        for(int i = 0; i < array->size; ++i){
+          //std::cerr << static_cast<unsigned>(data[i]) << " ";
+        }
+    //std::cerr << "\n";
         pos += array->size;
       }
+    //std::cerr << "end\n";
     }
     
     if (true == hasSolution) {
@@ -860,6 +874,9 @@ private:
   double _timeout;
   bool   _useForked;
   SolverRunStatus _runStatusCode;
+  unsigned int queryNum;
+  std::string error;
+  llvm::raw_fd_ostream f;
 
 public:
   MetaSMTSolverImpl(MetaSMTSolver<SolverContext> *solver, bool useForked, bool optimizeDivides);  
@@ -930,7 +947,7 @@ MetaSMTSolverImpl<SolverContext>::MetaSMTSolverImpl(MetaSMTSolver<SolverContext>
   : _solver(solver),    
     _builder(new MetaSMTBuilder<SolverContext>(_meta_solver, optimizeDivides)),
     _timeout(0.0),
-    _useForked(useForked)
+    _useForked(useForked), queryNum(0), f("/home/rakadjiev/Desktop/metasmt.smt2", error, llvm::raw_fd_ostream::F_Binary)
 {  
   assert(_solver && "unable to create MetaSMTSolver");
   assert(_builder && "unable to create MetaSMTBuilder");
@@ -984,11 +1001,38 @@ bool MetaSMTSolverImpl<SolverContext>::computeValue(const Query& query, ref<Expr
 
   // Find the object used in the expression, and compute an assignment for them.
   findSymbolicObjects(query.expr, objects);  
+  
   if (computeInitialValues(query.withFalse(), objects, values, hasSolution)) {  
       assert(hasSolution && "state has invalid constraint set");
       // Evaluate the expression with the computed assignment.
+//      for(int i = 0; i < values.size(); ++i){
+//        for(int j = 0; j < values[i].size(); ++j){
+//          std::cerr << (int)(values[i][j]) << " ";
+//        }
+//        std::cerr << "\n";
+//      }
+      
+      int i = 0;
+      for(std::vector<const Array*>::const_iterator it = objects.begin(), ie = objects.end(); it != ie; ++it){
+        std::cerr << "[";
+        for(int j = 0; j < (*it)->size; ++j){
+          //      std::cerr << (int)(values[i][j]) << " ";
+          unsigned char* c = (unsigned char*) & (values[i][j]);
+          for (int k = 0; k < sizeof (double); ++k) {
+            printf ("%02X ", c[i]);
+          }
+          printf (" ");
+        }
+        std::cerr << "]\n";
+        ++i;
+      }
       Assignment a(objects, values);
       result = a.evaluate(query.expr);
+      if (ConstantExpr *CE = dyn_cast<ConstantExpr>(result)){
+        std::cerr << "Result: " << CE->getWidth() << " " << CE->isTrue() << " " << CE->getZExtValue() << "\n";
+      } else {
+        std::cerr << "Result not constant";
+      }
       success = true;
   }
 
@@ -1001,12 +1045,21 @@ bool MetaSMTSolverImpl<SolverContext>::computeInitialValues(const Query &query,
                                              const std::vector<const Array*> &objects,
                                              std::vector< std::vector<unsigned char> > &values,
                                              bool &hasSolution) {  
-
+  ++queryNum;
   _runStatusCode =  SOLVER_RUN_STATUS_FAILURE;
 
   TimerStatIncrementer t(stats::queryTime);
   assert(_builder);
 
+  ExprSMTLIBPrinter p;
+  f << "{Query " << queryNum << "}\n";
+  p.setHumanReadable(true);
+  p.setOutput(f);
+  p.setQuery(query);
+  p.setArrayValuesToGet(objects);
+  p.generateOutput();
+  llvm::errs().flush();
+  
   /*
    * FIXME push() and pop() work for Z3 but not for Boolector.
    * If using Z3, use push() and pop() and assert constraints.
@@ -1033,15 +1086,32 @@ bool MetaSMTSolverImpl<SolverContext>::computeInitialValues(const Query &query,
       _runStatusCode = runAndGetCex(query.expr, objects, values, hasSolution);
       success = true;
   } 
-    
+  
+  p.setQuery(query);
+  p.setArrayValuesToGet(objects);
+  p.generateOutput();
+  llvm::errs().flush();
+  
+//  int i = 0;
+//  for(std::vector<const Array*>::const_iterator it = objects.begin(), ie = objects.end(); it != ie; ++it){
+//    assert((*it)->size == values[i].size() && "The size of one of the counterexamples doesn't equal the size of the requested assignments.");
+//    ++i;
+//  }
+  
+    //std::cerr << "\n\n";
+  std::cerr << "Query " << queryNum << ": ";
   if (success) {
       if (hasSolution) {
+    std::cerr << "sat\n";
           ++stats::queriesInvalid;
       }
       else {
+    std::cerr << "unsat\n";
           ++stats::queriesValid;
       }
-  }  
+  }  else {
+    std::cerr << "unknown\n";
+  }
    
   //pop(_meta_solver); 
   
@@ -1125,11 +1195,12 @@ SolverImpl::SolverRunStatus MetaSMTSolverImpl<SolverContext>::runAndGetCexForked
           ::alarm(std::max(1, (int) timeout));
       }     
       
+      //std::cerr << "\nConstraints: " << query.constraints.size() << "\n";
+      //std::cerr << "Expr: " << query.expr->getKind() << "\n";
       for (ConstraintManager::const_iterator it = query.constraints.begin(), ie = query.constraints.end(); it != ie; ++it) {      
           assertion(_meta_solver, _builder->construct(*it));
           //assumption(_meta_solver, _builder->construct(*it));  
       } 
-      
       
       std::vector< std::vector<typename SolverContext::result_type> > aux_arr_exprs;
       if (UseMetaSMT == METASMT_BACKEND_BOOLECTOR) {
@@ -1263,7 +1334,7 @@ SolverImpl::SolverRunStatus MetaSMTSolverImpl<SolverContext>::getOperationStatus
 }
 
 template class MetaSMTSolver< DirectSolver_Context < Boolector> >;
-template class MetaSMTSolver< DirectSolver_Context < Z3_Backend> >;
+//template class MetaSMTSolver< DirectSolver_Context < Z3_Backend> >;
 template class MetaSMTSolver< DirectSolver_Context < STP_Backend> >;
 
 #endif /* SUPPORT_METASMT */

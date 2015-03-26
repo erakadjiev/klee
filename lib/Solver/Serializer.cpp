@@ -184,10 +184,10 @@ capnp::MessageBuilder&& Serializer::serialize(const Query& queryExpr, const std:
 /** if *width_out!=1 then result is a bitvector,
     otherwise it is a bool */
 uint32_t Serializer::serialize(ref<Expr> e, int *width_out, capnp::Orphanage& orphanage, bool secretSwitch) {
-  if (isa<ConstantExpr>(e)) {
-    assert(e->getKind() == Expr::Kind::Constant && "Expression is not a constant");
-    return serializeActual(e, width_out, orphanage);
-  } else {
+//  if (isa<ConstantExpr>(e)) {
+//    assert(e->getKind() == Expr::Kind::Constant && "Expression is not a constant");
+//    return serializeActual(e, width_out, orphanage);
+//  } else {
     auto it = exprCache.find(e->hash());
     if (it != exprCache.end()) {
       if (width_out)
@@ -200,7 +200,7 @@ uint32_t Serializer::serialize(ref<Expr> e, int *width_out, capnp::Orphanage& or
       exprCache.insert(std::make_pair(e->hash(), std::make_pair(res, *width_out)));
       return res;
     }
-  }
+//  }
 }
 
 uint32_t Serializer::serializeCastExpr(ref<Expr> e, serialization::Expr::Kind kind, int *width_out, capnp::Orphanage& orphanage){

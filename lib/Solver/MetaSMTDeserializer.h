@@ -44,6 +44,11 @@
 #include <boost/mpl/vector.hpp>
 #include <boost/format.hpp>
 
+#include <capnp/serialize.h>
+#include <capnp/serialize-packed.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #define DIRECT_CONTEXT
 
 namespace klee {
@@ -59,8 +64,10 @@ class MetaSMTDeserializer {
 public:
 
     MetaSMTDeserializer(SolverContext& solver, bool optimizeDivides, bool useConstructCaching) : 
-      solver(solver), optimizeDivides(optimizeDivides), useConstructCaching(useConstructCaching) { };
-    virtual ~MetaSMTDeserializer() {};
+      solver(solver), optimizeDivides(optimizeDivides), useConstructCaching(useConstructCaching), avg(0), cnt(0), max(0) { };
+    virtual ~MetaSMTDeserializer() {
+      std::cerr << "Cnt: " << cnt << ", Avg: " << avg << ", Max: " << max << "\n";
+    };
     
     capnp::MessageBuilder&& deserializeAndSolve(kj::ArrayPtr<const kj::ArrayPtr<const capnp::word>> bytes, capnp::MessageBuilder&& replyMsg);
     
@@ -97,6 +104,10 @@ private:
     SolverContext&  solver;
     bool optimizeDivides;
     bool useConstructCaching;
+    
+    long double avg;
+    int cnt;
+    int max;
     
     capnp::List<serialization::Expr>::Reader exprList;
     capnp::List<serialization::Array>::Reader arrayList;
@@ -313,6 +324,24 @@ typename SolverContext::result_type MetaSMTDeserializer<SolverContext>::aPIntToM
 
 template<typename SolverContext>
 capnp::MessageBuilder&& MetaSMTDeserializer<SolverContext>::deserializeAndSolve(kj::ArrayPtr<const kj::ArrayPtr<const capnp::word>> bytes, capnp::MessageBuilder&& replyMsg){
+  
+//  int fd = open("tmpfile.capnp", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+//  if(fd==-1)
+//    std::cerr << "Error:" << errno << "\n";
+//  capnp::writePackedMessageToFd(fd, bytes);
+//  close(fd);
+//  struct stat stat_buf;
+//  int rc = stat("tmpfile.capnp", &stat_buf);
+//  unsigned long querySize = stat_buf.st_size;
+//  remove("tmpfile.capnp");
+  
+  unsigned long querySize = capnp::computeSerializedSizeInWords(bytes) * sizeof(capnp::word);
+  ++cnt;
+  avg = (querySize + ((cnt-1) * avg)) / cnt;
+  if(querySize > max){
+    max = querySize;
+  }
+  
   capnp::SegmentArrayMessageReader message(bytes);
   serialization::Query::Reader query = message.getRoot<serialization::Query>();
   
@@ -376,9 +405,9 @@ capnp::MessageBuilder&& MetaSMTDeserializer<SolverContext>::deserializeAndSolve(
       otherwise it is a bool */
 template<typename SolverContext>
 typename SolverContext::result_type MetaSMTDeserializer<SolverContext>::deserialize(uint32_t exprId, int *width_out) {
-  if (/*!useConstructCaching ||*/ (exprList[exprId].getKind() == serialization::Expr::Kind::CONSTANT)) {
-    return(deserializeActual(exprId, width_out));
-  } else {
+//  if (/*!useConstructCaching ||*/ (exprList[exprId].getKind() == serialization::Expr::Kind::CONSTANT)) {
+//    return(deserializeActual(exprId, width_out));
+//  } else {
     auto it = exprCache.find(exprId);
     if (it != exprCache.end()) {
       if (width_out) {
@@ -394,7 +423,7 @@ typename SolverContext::result_type MetaSMTDeserializer<SolverContext>::deserial
       exprCache[exprId] = std::make_pair(res, *width_out);
       return res;
     }
-  }
+//  }
 }
 
 template<typename SolverContext>
