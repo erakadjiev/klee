@@ -108,7 +108,7 @@ namespace klee {
   // ------------------------------------- SMTLIBSolverImpl methods ----------------------------------------
   
   SMTLIBSolverImpl::SMTLIBSolverImpl(const string _solverAddress) :
-          timeout(0.0), _runStatusCode(SOLVER_RUN_STATUS_FAILURE), solverPath(_solverAddress), IgnoreSolverFailures(false) {
+          timeout(0.0), _runStatusCode(SOLVER_RUN_STATUS_FAILURE), solverPath(_solverAddress), IgnoreSolverFailures(false), cnt(0), avg(0), max(0) {
     // FIXME there should be an initial run status code (e.g. _UNKNOWN or _RUNNING)
     printer = new ExprSMTLIBPrinter();
     printer->setLogic(ExprSMTLIBPrinter::QF_AUFBV);
