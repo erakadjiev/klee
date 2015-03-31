@@ -244,6 +244,16 @@ namespace klee {
       virtual void waitForResponse();
   };
 
+  class ParallelSolver: public Solver {
+    public:
+      ParallelSolver(std::string pathToSolver);
+      virtual ~ParallelSolver();
+
+      virtual char* getConstraintLog(const Query&);
+      virtual void setCoreSolverTimeout(double timeout);
+      virtual void waitForResponse();
+  };
+
   class SMTLIBSolver : public Solver {
     public:
       SMTLIBSolver(std::string pathToSolver);

@@ -1,4 +1,4 @@
-//===-- DistributedSolver.cpp ------------------------------------------*- C++ -*-===//
+//===-- ParallelSolver.cpp ------------------------------------------*- C++ -*-===//
 //
 //                     The KLEE Symbolic Virtual Machine
 //
@@ -24,11 +24,11 @@
 
 #include <errno.h>
 
+#include "LocalSolverService.h"
+
 #include "SMTLIBOutputLexer.h"
 
 #include "SolverStats.h"
-
-#include "llvm/Support/CommandLine.h"
 
 #include <czmq.h>
 
@@ -36,15 +36,8 @@
 #include <boost/fiber/future.hpp>
 #include <unordered_map>
 
-namespace SMTLIBSolverOpts {
-  llvm::cl::opt<bool> makeHumanReadableSMTLIB("smtlibv2-solver-human-readable",
-      llvm::cl::desc(
-          "If using smtlibv2 solver make the queries human readable (default=off) (see -solver)."),
-          llvm::cl::init(false));
-}
-
 namespace klee {
-  class DistributedSolverImpl: public SolverImpl {
+  class ParallelSolverImpl: public SolverImpl {
     public:
       class SolverReply{
         public:
@@ -67,10 +60,8 @@ namespace klee {
 
       ExprSMTLIBPrinter* printer;
 
-//      zsock_t* discovery;
-      zsock_t* service;
-      zpoller_t* service_poller;
-//      zhashx_t* solvers;
+      zactor_t* serviceActor;
+      zpoller_t* servicePoller;
 
       std::unordered_map<unsigned int, boost::fibers::promise<SolverReply>> pendingQueries;
 
@@ -80,10 +71,10 @@ namespace klee {
 
       void giveUp();
 
-//      void findAndSetSolverBackends();
-      std::string buildSMTLIBv2String(const Query& q,
-          const std::vector<const Array*>& arrays);
-      std::string buildSMTLIBv2String(const Query& q);
+      static void solver_actor(zsock_t* pipe, void* args);
+      std::string& buildSMTLIBv2String(const Query& q,
+          const std::vector<const Array*>& arrays, std::string& smtLibString);
+      std::string& buildSMTLIBv2String(const Query& q, std::string& smtLibString);
       int generateRequestId();
       SolverReply sendQuery(std::string query);
       virtual SolverImpl::SolverRunStatus solveRemotely(const Query& q,
@@ -96,8 +87,8 @@ namespace klee {
           bool& hasSolution);
 
     public:
-      DistributedSolverImpl(const std::string _solverAddress);
-      ~DistributedSolverImpl();
+      ParallelSolverImpl(const std::string _solverAddress);
+      ~ParallelSolverImpl();
 
       ///Set the time in seconds to wait for the solver to complete.
       ///This time is rounded to the nearest second.
@@ -116,60 +107,61 @@ namespace klee {
       void waitForResponse();
   };
   
-  DistributedSolver::DistributedSolver(std::string solverAddress) :
-          Solver(new DistributedSolverImpl(solverAddress)) {
+  ParallelSolver::ParallelSolver(std::string solverAddress) :
+          Solver(new ParallelSolverImpl(solverAddress)) {
   }
   
-  DistributedSolver::~DistributedSolver(){
+  ParallelSolver::~ParallelSolver(){
   }
 
-  void DistributedSolver::setCoreSolverTimeout(double timeout) {
+  void ParallelSolver::setCoreSolverTimeout(double timeout) {
     impl->setCoreSolverTimeout(timeout);
   }
   
-  char* DistributedSolver::getConstraintLog(const Query& query) {
+  char* ParallelSolver::getConstraintLog(const Query& query) {
     return (impl->getConstraintLog(query));
   }
 
-  void DistributedSolver::waitForResponse() {
-    static_cast<DistributedSolverImpl*>(impl)->waitForResponse();
+  void ParallelSolver::waitForResponse() {
+    static_cast<ParallelSolverImpl*>(impl)->waitForResponse();
   }
   
-  // ------------------------------------- DistributedSolverImpl methods ----------------------------------------
+  // ------------------------------------- ParallelSolverImpl methods ----------------------------------------
   
-  DistributedSolverImpl::DistributedSolverImpl(const std::string _solverAddress) :
-          timeout(0.0), _runStatusCode(SOLVER_RUN_STATUS_FAILURE), service(zsock_new(ZMQ_DEALER)), 
-          service_poller(zpoller_new(service, NULL)), reqId(0) {
+  ParallelSolverImpl::ParallelSolverImpl(std::string solverAddress) :
+          timeout(0.0), _runStatusCode(SOLVER_RUN_STATUS_FAILURE), reqId(0) {
     // FIXME there should be an initial run status code (e.g. _UNKNOWN or _RUNNING)
     printer = new ExprSMTLIBPrinter();
     printer->setLogic(ExprSMTLIBPrinter::QF_AUFBV);
-    printer->setHumanReadable(SMTLIBSolverOpts::makeHumanReadableSMTLIB);
-    assert(service);
-    assert(service_poller);
-
-    zsock_connect(service, _solverAddress.c_str());
+    printer->setHumanReadable(false);
     
+//    serviceActor = zactor_new(LocalSolverService::solver_actor, (void*)&solverAddress);
+    serviceActor = zactor_new(LocalSolverService::solver_actor, NULL);
+    servicePoller = zpoller_new(serviceActor, NULL);
+    assert(serviceActor);
+    assert(servicePoller);
+
     // CZMQ overrides KLEE's signal handler
     zsys_handler_reset();
   }
 
-  DistributedSolverImpl::~DistributedSolverImpl() {
-    zsock_set_linger(service, 0);
-    zpoller_destroy(&service_poller);
-    zsock_destroy(&service);
+  ParallelSolverImpl::~ParallelSolverImpl() {
+    zactor_destroy(&serviceActor);
+    zpoller_destroy(&servicePoller);
     delete printer;
   }
 
-  void DistributedSolverImpl::giveUp() {
-    klee_error("DistributedSolverImpl: Giving up!");
+  void ParallelSolverImpl::giveUp() {
+    klee_error("ParallelSolverImpl: Giving up!");
   }
   
-  void DistributedSolverImpl::setCoreSolverTimeout(double _timeout) {
+  void ParallelSolverImpl::setCoreSolverTimeout(double _timeout) {
     timeout = _timeout;
   }
   
-  char* DistributedSolverImpl::getConstraintLog(const Query& q) {
-    std::string constraintLog = buildSMTLIBv2String(q);
+  char* ParallelSolverImpl::getConstraintLog(const Query& q) {
+    std::string constraintLog;
+    buildSMTLIBv2String(q, constraintLog);
 
     // XXX the return value of this function shouldn't be char*
     char* ret = new char[ constraintLog.length() + 1 ];
@@ -178,7 +170,7 @@ namespace klee {
     return ret;
   }
   
-  bool DistributedSolverImpl::computeTruth(const Query& query, bool& isValid) {
+  bool ParallelSolverImpl::computeTruth(const Query& query, bool& isValid) {
     
     bool success = false;
     std::vector<const Array*> objects;
@@ -194,7 +186,7 @@ namespace klee {
     return (success);
   }
   
-  bool DistributedSolverImpl::computeValue(const Query& query, ref<Expr>& result) {
+  bool ParallelSolverImpl::computeValue(const Query& query, ref<Expr>& result) {
     
     bool success = false;
     std::vector<const Array*> objects;
@@ -214,7 +206,7 @@ namespace klee {
     return (success);
   }
   
-  bool DistributedSolverImpl::computeInitialValues(const Query& query,
+  bool ParallelSolverImpl::computeInitialValues(const Query& query,
       const std::vector<const Array*>& objects,
       std::vector<std::vector<unsigned char> >& values, bool& hasSolution) {
     
@@ -240,12 +232,13 @@ namespace klee {
     return success;
   }
 
-  SolverImpl::SolverRunStatus DistributedSolverImpl::solveRemotely(const Query& query,
+  SolverImpl::SolverRunStatus ParallelSolverImpl::solveRemotely(const Query& query,
       const std::vector<const Array*>& objects,
       std::vector<std::vector<unsigned char> >& values,
       bool& hasSolution) {
 
-    std::string smtLibQuery = buildSMTLIBv2String(query, objects);
+    std::string smtLibQuery;
+    buildSMTLIBv2String(query, objects, smtLibQuery);
 
     SolverReply queryResult = sendQuery(smtLibQuery);
 
@@ -270,26 +263,26 @@ namespace klee {
     return ret;
   }
 
-  int DistributedSolverImpl::generateRequestId(){
+  int ParallelSolverImpl::generateRequestId(){
     if(++reqId > maxId){
       reqId = 0;
     }
     return reqId;
   }
 
-  DistributedSolverImpl::SolverReply DistributedSolverImpl::sendQuery(std::string query){
+  ParallelSolverImpl::SolverReply ParallelSolverImpl::sendQuery(std::string query){
     // std::cout << id << " starts\n";
     // std::cout << "Sending SMT query to sock\n";
     int req_id = generateRequestId();
-    zstr_sendm(service, std::to_string(req_id).c_str());
-    int rc = zstr_send(service, query.c_str());
+    zstr_sendm(serviceActor, std::to_string(req_id).c_str());
+    int rc = zstr_send(serviceActor, query.c_str());
     assert(rc == 0);
 //    std::cout << boost::fibers::detail::scheduler::instance()->active()->get_id() << " sent query\n";
     
     bool gotOwnResponse = false;
     SolverReply solver_reply;
-    while (zsock_events(service) & ZMQ_POLLIN) {
-      zmsg_t* msg = zmsg_recv(service);
+    while (zsock_events(serviceActor) & ZMQ_POLLIN) {
+      zmsg_t* msg = zmsg_recv(serviceActor);
       char* response_id = zmsg_popstr(msg);
       char* response_status = zmsg_popstr(msg);
 
@@ -336,11 +329,11 @@ namespace klee {
     return solver_reply;
   }
 
-  void DistributedSolverImpl::waitForResponse(){
-    while (!(zsock_events(service) & ZMQ_POLLIN)){
-      void* ret = zpoller_wait(service_poller, 500);
+  void ParallelSolverImpl::waitForResponse(){
+    while (!(zsock_events(serviceActor) & ZMQ_POLLIN)){
+      void* ret = zpoller_wait(servicePoller, 500);
       if(ret == NULL){
-        if(zpoller_terminated(service_poller)){
+        if(zpoller_terminated(servicePoller)){
           std::cout << "Service poller terminated\n";
         } else {
           std::cout << "Service poller failed (unknown reason)\n";
@@ -348,8 +341,8 @@ namespace klee {
         return;
       }
     }
-    while (zsock_events(service) & ZMQ_POLLIN) {
-      zmsg_t* msg = zmsg_recv(service);
+    while (zsock_events(serviceActor) & ZMQ_POLLIN) {
+      zmsg_t* msg = zmsg_recv(serviceActor);
       char* response_id = zmsg_popstr(msg);
       char* response_status = zmsg_popstr(msg);
 
@@ -376,7 +369,7 @@ namespace klee {
     }
   }
   
-  SolverImpl::SolverRunStatus DistributedSolverImpl::parseSolverOutput(char* solverOutput,
+  SolverImpl::SolverRunStatus ParallelSolverImpl::parseSolverOutput(char* solverOutput,
       const std::vector<const Array*>& objects,
       std::vector<std::vector<unsigned char> >& values,
       bool& hasSolution){
@@ -392,13 +385,13 @@ namespace klee {
      * set of assertions was satisfiable
      */
     if (!lexer.getNextToken(t)) {
-      klee_warning("DistributedSolverImpl: Lexer failed to get token");
+      klee_warning("ParallelSolverImpl: Lexer failed to get token");
       return SOLVER_RUN_STATUS_FAILURE;
     }
 
     switch (t) {
       case SMTLIBOutputLexer::UNKNOWN_TOKEN:
-        klee_warning("DistributedSolverImpl : Solver responded unknown");
+        klee_warning("ParallelSolverImpl : Solver responded unknown");
         return SOLVER_RUN_STATUS_FAILURE;
       case SMTLIBOutputLexer::UNSAT_TOKEN:
         //not satisfiable
@@ -408,7 +401,7 @@ namespace klee {
         hasSolution = true;
         break;
       default:
-        std::cerr << "DistributedSolverImpl : Unexpected token `"
+        std::cerr << "ParallelSolverImpl : Unexpected token `"
         << lexer.getLastTokenContents() << "`" << std::endl;
         giveUp();
         return SOLVER_RUN_STATUS_FAILURE;
@@ -445,7 +438,7 @@ namespace klee {
           if (!lexer.getNextToken(t)
               || t != SMTLIBOutputLexer::LBRACKET_TOKEN) {
             klee_error(
-                "DistributedSolverImpl: Lexer failed to get token for array assignment. Expected `(`");
+                "ParallelSolverImpl: Lexer failed to get token for array assignment. Expected `(`");
             return SOLVER_RUN_STATUS_FAILURE;
           }
         }
@@ -453,7 +446,7 @@ namespace klee {
         // Expect "select"
         if (!lexer.getNextToken(t) || t != SMTLIBOutputLexer::SELECT_TOKEN) {
           klee_error(
-              "DistributedSolverImpl: Lexer failed to get token for array assignment. Expected `select`");
+              "ParallelSolverImpl: Lexer failed to get token for array assignment. Expected `select`");
           return SOLVER_RUN_STATUS_FAILURE;
         }
 
@@ -462,7 +455,7 @@ namespace klee {
             || t != SMTLIBOutputLexer::ARRAY_IDENTIFIER_TOKEN
             || (*it)->name != lexer.getLastTokenContents()) {
           std::cerr
-          << "DistributedSolverImpl: Lexer failed to get array identifier token."
+          << "ParallelSolverImpl: Lexer failed to get array identifier token."
           << std::endl << "Expected array name `" << (*it)->name
           << "`. Instead received token `" << lexer.getLastTokenContents()
           << "`" << std::endl;
@@ -477,7 +470,7 @@ namespace klee {
             || !lexer.getLastNumericValue(foundByteNumber)
             || foundByteNumber != byteNumber) {
           klee_warning(
-              "DistributedSolverImpl : Lexer failed to get token for array assignment.");
+              "ParallelSolverImpl : Lexer failed to get token for array assignment.");
           std::cerr << "Expected (_ bv" << foundByteNumber << " "
               << (*it)->getDomain() << " ). Instead received"
               "token " << lexer.getLastTokenContents() << std::endl;
@@ -488,7 +481,7 @@ namespace klee {
         //Expect ")"
         if (!lexer.getNextToken(t) || t != SMTLIBOutputLexer::RBRACKET_TOKEN) {
           klee_error(
-              "DistributedSolverImpl: Lexer failed to get token for array assignment. Expected `)`");
+              "ParallelSolverImpl: Lexer failed to get token for array assignment. Expected `)`");
           return SOLVER_RUN_STATUS_FAILURE;
         }
 
@@ -499,21 +492,21 @@ namespace klee {
                 && t != SMTLIBOutputLexer::NUMERAL_BASE16_TOKEN
                 && t != SMTLIBOutputLexer::NUMERAL_BASE2_TOKEN)) {
           klee_error(
-              "DistributedSolverImpl : Lexer failed to get token for array assignment."
+              "ParallelSolverImpl : Lexer failed to get token for array assignment."
               " Expected bitvector value.");
           return SOLVER_RUN_STATUS_FAILURE;
         }
 
         if (!lexer.getLastNumericValue(determinedByteValue)) {
           klee_error(
-              "DistributedSolverImpl : Lexer could not get the numeric value of the "
+              "ParallelSolverImpl : Lexer could not get the numeric value of the "
               "found bitvector constant");
           return SOLVER_RUN_STATUS_FAILURE;
         }
 
         if (determinedByteValue > 255) {
           klee_error(
-              "DistributedSolverImpl: Determined value for bitvector byte was out of range!");
+              "ParallelSolverImpl: Determined value for bitvector byte was out of range!");
         }
 
         byteValue = determinedByteValue;
@@ -528,7 +521,7 @@ namespace klee {
           if (!lexer.getNextToken(t)
               || t != SMTLIBOutputLexer::RBRACKET_TOKEN) {
             klee_error(
-                "DistributedSolverImpl: Lexer failed to get token for array assignment. Expected `)`");
+                "ParallelSolverImpl: Lexer failed to get token for array assignment. Expected `)`");
             return SOLVER_RUN_STATUS_FAILURE;
           }
         }
@@ -543,9 +536,8 @@ namespace klee {
     return SOLVER_RUN_STATUS_SUCCESS_SOLVABLE;
   }
 
-  std::string DistributedSolverImpl::buildSMTLIBv2String(const Query& q,
-      const std::vector<const Array*>& arrays){
-    std::string smtLibString;
+  std::string& ParallelSolverImpl::buildSMTLIBv2String(const Query& q,
+      const std::vector<const Array*>& arrays, std::string& smtLibString){
     llvm::raw_string_ostream os(smtLibString);
 
     printer->setOutput(os);
@@ -553,23 +545,20 @@ namespace klee {
     printer->setArrayValuesToGet(arrays);
     printer->generateOutput();
 
-    os.flush();
-    return smtLibString;
+    return os.str();
   }
 
-  std::string DistributedSolverImpl::buildSMTLIBv2String(const Query& q){
-    std::string smtLibString;
+  std::string& ParallelSolverImpl::buildSMTLIBv2String(const Query& q, std::string& smtLibString){
     llvm::raw_string_ostream os(smtLibString);
 
     printer->setOutput(os);
     printer->setQuery(q);
     printer->generateOutput();
 
-    os.flush();
-    return smtLibString;
+    return os.str();
   }
 
-  SolverImpl::SolverRunStatus DistributedSolverImpl::getOperationStatusCode() {
+  SolverImpl::SolverRunStatus ParallelSolverImpl::getOperationStatusCode() {
     return _runStatusCode;
   }
 

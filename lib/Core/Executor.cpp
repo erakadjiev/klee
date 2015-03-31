@@ -335,6 +335,7 @@ Executor::Executor(const InterpreterOptions &opts,
   // FIXME check for solver address for correctness
   if(useDistSolver && !solverServiceAddress.empty()){
     coreSolver = new DistributedSolver(solverServiceAddress);
+//    coreSolver = new ParallelSolver("/home/rakadjiev/workspace/stpwrap2/build/stpwrap2");
   } else {
     coreSolver = new STPSolver(UseForkedCoreSolver, CoreSolverOptimizeDivides);
   }
